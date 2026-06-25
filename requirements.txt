@@ -1,0 +1,11 @@
+# Portfolio OS — Python 의존성 (저사양 환경 — 최소 유지)
+# KIS 클라이언트/리스크게이트는 표준 라이브러리(urllib 등)만 사용. 아래는 보조 도구.
+python-dotenv>=1.0   # .env 로드 (db / kis_client)
+PyYAML>=6.0          # config/portfolio/*.yaml (risk_limits 등)
+
+# --- Track C: PostgreSQL opt-in (DB_BACKEND=postgres 일 때만 사용) ---
+# 기본은 SQLite(표준 라이브러리). 아래는 PG 경로 활성화 시에만 import 됨.
+psycopg2-binary>=2.9 # store/pg.py — PostgreSQL(운영-truth) 쓰기 어댑터
+
+# --- 개발/테스트 전용 ---
+pytest>=8.0          # main_mission/portfolio_os/tests

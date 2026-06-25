@@ -1,0 +1,31 @@
+# --- 비밀/자격증명 (절대 커밋 금지) ---
+.env
+.env.*
+!.env.example
+# 로컬 DB + KIS 토큰 캐시(평문 bearer token) — 비밀 포함
+data/
+**/kis_token_*.json
+
+# --- Python ---
+*.pyc
+__pycache__/
+.venv/
+venv/
+
+# --- Web (Next.js) ---
+web/node_modules/
+web/.next/
+web/dev_server*.log
+web/*.tsbuildinfo
+
+# --- 에디터/OS ---
+.idea/
+.vscode/
+.DS_Store
+*.log
+
+# --- Claude 로컬 설정 ---
+.claude/settings.local.json
+
+# --- 내부 CEO 지시/메모 (발행 제외) ---
+private.txt

@@ -1,0 +1,28 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Pretendard CDN (한국어 가독성) */
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css");
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body {
+  background-color: #f7f8fa;
+  color: #1f2430;
+  font-family: Pretendard, system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 부드러운 hover transition 기본 */
+button, a, [role="button"] {
+  transition: all 0.15s ease;
+}
+
+/* scrollbar */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: #DCE0E8; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #9099A8; }

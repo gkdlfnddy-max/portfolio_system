@@ -1,0 +1,50 @@
+# Portfolio OS — Risk Limits (초안)
+# SSOT 는 DB risk_limits 테이블. 본 파일은 초기 시드 + 사람이 읽는 참조.
+# hard: true  → risk-chief hard-block (주문 후보 생성 차단)
+# hard: false → advisory (경고만)
+# 세부: docs/portfolio/safety_rules.md
+
+limits:
+  cash_min_pct:            { value: 10, hard: true,  desc: "현금 최소 비중. 이 아래로 만드는 매수 차단" }
+  single_name_max_pct:     { value: 20, hard: true,  desc: "단일 종목 최대 비중" }
+  short_total_max_pct:     { value: 10, hard: true,  desc: "인버스/숏 ETF 총합 (보험 수준)" }
+  leverage_total_max_pct:  { value: 15, hard: true,  desc: "레버리지 ETF 총합" }
+  daily_loss_stop_pct:     { value: 5,  hard: true,  desc: "일일 손실 한도 → 추가 매수 중단" }
+  single_order_max_pct:    { value: 5,  hard: true,  desc: "1주문 최대(총자산 대비) → 슬리피지 방지" }
+  max_orders_per_session:  { value: 20, hard: false, desc: "1세션 주문 수 상한" }
+
+# 시간대 제한 (safety_rules C1) — Wave 1: 개장 블랙아웃 15분으로 연장(KRX 개장 변동성 최고)
+time_guards:
+  open_blackout_min:   15   # 장 시작 후 N분 주문 제한 (10→15 반영)
+  close_blackout_min:  10   # 장 마감 전 N분 주문 제한
+  close_single_price_limit_only: true  # 마감 단일가 구간 지정가 강제
+  default_order_type:  limit  # 변동성 큰 종목/개장 직후 지정가 권장
+  vi_triggered_hold:   true   # 종목 VI 발동 시 해당 종목 주문 보류(advisory)
+  market_circuit_breaker_abort: true   # KOSPI 서킷브레이커(±8%↑) 발동 시 세션 ABORT(hard)
+
+# drift band — 이 범위 안의 차이는 거래하지 않음 (과매매 방지)
+# Wave 1 제안(plan_required, 백테스트 후 CEO 승인): 5/25 결합 band
+rebalance:
+  drift_band_pct: 3            # 현행(단일 절대값)
+  # proposed:
+  #   abs_band_pct: 5           # 절대 5%p
+  #   rel_band_frac: 0.25       # 또는 목표의 25% (둘 중 min 적용)
+  #   rebalance_to: edge        # target | edge (edge = 부분 리밸런싱, turnover↓)
+  #   per_asset_override: { core: abs, satellite: rel, short: rel, leverage: rel }
+
+# Wave 1 제안 — 신규 한도 (CEO 승인 후 limits 로 승격)
+proposed_limits:
+  max_drawdown_stop_pct:           { value: 11, hard: true,  desc: "고점 대비 누적 손실 한도(일일 단일한도의 trending 취약점 보완)" }
+  leveraged_inverse_combined_max_pct: { value: 15, hard: false, desc: "숏+레버리지 합산 노출 상한" }
+  leveraged_hold_days_max:         { value: 10, hard: true,  desc: "레버리지/인버스 보유일 상한(decay 방어). 데이터 없으면 fail-closed" }
+  fx_stale_max_min:                { value: 15, hard: false, desc: "환율 stale 임계 초과 시 주문 보류" }
+
+# Wave 1 제안 — 기존 한도 재검토 (CEO 결정 필요, risk-chief 제안값)
+limit_review_proposals:
+  single_name_max_pct:    { current: 20, proposed: 15, note: "기관 기준 단일종목 5~10%, 20%는 과도" }
+  short_total_max_pct:    { current: 10, proposed: 5,  note: "'보험 수준'이면 5%로 충분(인버스 decay)" }
+  leverage_total_max_pct: { current: 15, proposed: 10, note: "레버리지 decay, 15%는 단기전술로도 높음" }
+
+# 미국 자산 유효노출 (환율 이중리스크 반영) — 초기 보수값
+fx_effective_exposure:
+  usd_asset_multiplier: 1.1   # 미국 자산 비중 한도 체크 시 환변동 버퍼 가산
