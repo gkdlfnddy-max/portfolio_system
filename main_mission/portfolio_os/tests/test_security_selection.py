@@ -326,6 +326,21 @@ def test_normalized_marks_include_reason_for_final():
     assert c["candidate_type"] == "etf"
 
 
+def test_normalized_candidate_types_cover_etf_and_stock():
+    setup()  # 반도체 bucket = ETF(SOXX/SMH) + 개별주(005930/000660) 혼합
+    cl = ss.classify_bucket(1, "semiconductor")
+    types = {c["candidate_type"] for c in cl["normalized"]}
+    assert "etf" in types and "stock" in types, types
+
+
+def test_normalized_inverse_bucket_marks_inverse_type():
+    setup()
+    cl = ss.classify_bucket(1, "semiconductor_inverse")
+    assert cl["normalized"]
+    assert all(c["candidate_type"] == "inverse" for c in cl["normalized"]), \
+        {c["candidate_id"]: c["candidate_type"] for c in cl["normalized"]}
+
+
 # --------------------------------------------------------------------------- 우량주 필터
 def test_quality_filter_honest_none_when_no_financial_data():
     setup()
