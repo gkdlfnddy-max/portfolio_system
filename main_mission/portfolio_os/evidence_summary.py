@@ -408,6 +408,7 @@ def _row_to_view(r) -> dict:
         "source": r["source"],
         "source_type": r["source_type"],
         "source_date": r["source_date"],
+        "captured_at": r["created_at"],   # 수집 시각(EvidenceRecord.captured_at 매핑용)
         "url": r["url"],
         "related_account": r["related_account"],
         "related_ticker": r["related_ticker"],
