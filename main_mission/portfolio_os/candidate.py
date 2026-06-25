@@ -38,9 +38,13 @@ from typing import Any
 
 
 def _clamp01(x: Any) -> float | None:
+    """0~1 clamp. 숫자가 아니면(예: 'medium' 라벨) None — 가짜 점수 만들지 않음."""
     if x is None:
         return None
-    return max(0.0, min(1.0, float(x)))
+    try:
+        return max(0.0, min(1.0, float(x)))
+    except (TypeError, ValueError):
+        return None
 
 
 # 표준 후보 평가 필드(SSOT) — 직렬화/소비 순서의 단일 진실.

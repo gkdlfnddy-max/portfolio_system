@@ -172,6 +172,25 @@ def test_compare_has_all_columns(monkeypatch):
     assert out["auto_order_created"] is False and out["policy_changed"] is False
 
 
+def test_compare_emits_normalized_candidate_evaluations(monkeypatch):
+    _patch_elevated(monkeypatch)
+    _mk_account(921)
+    out = govbond_etf.compare_govbond_candidates(921)
+    norm = out["normalized"]
+    assert len(norm) == len(out["candidates"]) + len(out["excluded"])
+    for c in norm:
+        assert c["candidate_type"] == "treasury"
+        assert c["bucket"] == "treasury"
+        # 안전 불변식
+        assert c["approval_required"] is True
+        assert c["auto_order_created"] is False and c["auto_applied"] is False
+        # 비교 단계 — 가짜 비중 금지
+        assert c["suggested_weight"] is None and c["max_weight"] is None
+    # 후보(미제외)는 편입 사유, 제외분은 제외 사유
+    included = [c for c in norm if c["reason_to_exclude"] == ""]
+    assert included and all(c["reason_to_include"] for c in included)
+
+
 def test_compare_macro_fit_short_adequate_in_elevated(monkeypatch):
     _patch_elevated(monkeypatch)
     _mk_account(902)

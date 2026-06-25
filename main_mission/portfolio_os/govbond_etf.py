@@ -26,6 +26,7 @@ import sys
 from datetime import datetime, timezone
 
 from . import price_history
+from .candidate import candidate_evaluation
 
 # --- ETF universe (정성 사실 + 실연동 가능 여부) ------------------------------
 # duration_bucket: short | intermediate | long
@@ -330,6 +331,49 @@ def _strength(macro_fit: str, purpose_fit: str, data_available: bool) -> str:
     return "낮음"
 
 
+def _row_to_candidate_eval(row: dict):
+    """국채 ETF 비교 행 → CandidateEvaluation(공통 SSOT). additive — 기존 출력 무변경.
+
+    국채 ETF 비교 단계는 비중을 확정하지 않으므로 suggested_weight/max_weight=None(가짜 숫자 금지).
+    """
+    dq = row.get("data_quality") or {}
+    available = bool(dq.get("data_available"))
+    strength = row.get("recommendation_strength")
+    # data_quality.confidence 는 라벨('low'/'medium'/'high') → 표준 0~1 로 변환(원 라벨 보존).
+    conf_label = dq.get("confidence")
+    conf_num = {"low": 0.3, "medium": 0.6, "high": 0.85}.get(str(conf_label).lower(), 0.0)
+    return candidate_evaluation(
+        "treasury", row.get("ticker"),
+        display_name=row.get("name") or row.get("ticker") or "",
+        bucket="treasury",
+        fit_to_account=row.get("purpose_fit"),
+        data_quality={"available": available,
+                      "level": "connected" if available else "unavailable",
+                      "confidence": conf_label, "source": dq.get("source")},
+        confidence=conf_num,
+        risk_summary={"role": row.get("role"), "risks": row.get("risks"),
+                      "macro_fit": row.get("macro_fit"),
+                      "recommendation_strength": strength},
+        evidence_summary={"duration_bucket": row.get("duration_bucket"),
+                          "classification": row.get("classification"),
+                          "region": row.get("region"),
+                          "tracking_index": row.get("tracking_index"),
+                          "hedged_or_unhedged": row.get("hedged_or_unhedged"),
+                          "expense_ratio": dq.get("expense_ratio"),
+                          "yield": dq.get("yield"),
+                          "duration_years": dq.get("duration_years")},
+        reason_to_include=(f"{row.get('role','')} · 거시적합:{(row.get('macro_fit') or {}).get('label')}"
+                           f" · 목적적합:{(row.get('purpose_fit') or {}).get('label')} (강도:{strength})"),
+    )
+
+
+def _excluded_to_candidate_eval(e: dict):
+    return candidate_evaluation(
+        "treasury", e.get("ticker"), bucket="treasury",
+        data_quality={"available": False, "level": "filtered"},
+        reason_to_exclude=e.get("reason", ""))
+
+
 def compare_govbond_candidates(account_index: int, *,
                                duration_pref: str | None = None,
                                region: str | None = None) -> dict:
@@ -420,6 +464,9 @@ def compare_govbond_candidates(account_index: int, *,
         "account_purpose": purpose,                 # 계좌 목적(확정안/프로필)
         "candidates": rows,
         "excluded": excluded,                       # 제외 사유 정직
+        # additive: 공통 CandidateEvaluation 정규화(기존 candidates/excluded 무변경).
+        "normalized": ([_row_to_candidate_eval(r) for r in rows]
+                       + [_excluded_to_candidate_eval(e) for e in excluded]),
         "classification": {"by_duration": buckets, "by_country": by_country},
         "long_bond_volatility_warning": LONG_BOND_VOLATILITY_WARNING,
         "decision_note": "비교 제시일 뿐 — 특정 ETF 를 바로 확정하지 않는다(C안 확정 아님).",
