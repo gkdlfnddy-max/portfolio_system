@@ -721,11 +721,16 @@ def compare_bucket(account_index: int, bucket: str, *, conn=None) -> dict:
     headline = ("후보 비교 자료(읽기 전용). 데이터가 충분한 후보는 정합성까지 비교 가능."
                 if any_strong else
                 "후보 비교 단계 — 데이터 부족으로 강한 추천 불가(정직). 자료 적재 후 재평가.")
+    # additive: 비교 행을 공통 CandidateEvaluation 포맷으로도 제공(기존 comparison 무변경).
+    # 비교 단계는 적합도 판정 전이라 reason_to_include/exclude 는 빈 값(판정은 classify_bucket).
+    normalized = [_row_to_candidate_eval(r, bucket=bucket, category="compare", reason="")
+                  for r in rows]
     return {
         "ok": True, "account_index": account_index, "bucket": bucket,
         "label": cb["label"], "kind": cb["kind"],
         "candidate_count": len(rows),
         "comparison": rows,
+        "normalized": normalized,
         "strong_conclusion_possible": any_strong,
         "honest_flags": cb.get("honest_flags", []),
         "headline": headline,

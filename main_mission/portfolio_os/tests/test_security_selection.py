@@ -326,6 +326,16 @@ def test_normalized_marks_include_reason_for_final():
     assert c["candidate_type"] == "etf"
 
 
+def test_compare_bucket_also_emits_normalized():
+    setup()  # UI 는 --compare(compare_bucket)를 소비 → 여기에도 normalized 필요
+    cmp = ss.compare_bucket(1, "semiconductor")
+    assert "normalized" in cmp and len(cmp["normalized"]) == len(cmp["comparison"])
+    for c in cmp["normalized"]:
+        assert c["approval_required"] is True
+        assert c["auto_order_created"] is False and c["auto_applied"] is False
+        assert c["suggested_weight"] is None and c["max_weight"] is None
+
+
 def test_normalized_candidate_types_cover_etf_and_stock():
     setup()  # 반도체 bucket = ETF(SOXX/SMH) + 개별주(005930/000660) 혼합
     cl = ss.classify_bucket(1, "semiconductor")

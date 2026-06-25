@@ -186,3 +186,27 @@ export interface DecisionRun {
   lessons: LessonCandidate[];
   totalValueKrw: number;
 }
+
+// 후보 평가 공통 스키마(SSOT) — 백엔드 candidate.py CandidateEvaluation 와 1:1.
+// 종목/ETF/국채/인버스 후보를 동일 구조로 비교 UI 가 소비한다(additive — 기존 필드 무변경).
+// 안전 불변식: approval_required=true · auto_order_created=false · auto_applied=false.
+// 미정 비중은 null(가짜 숫자 금지).
+export interface CandidateEvaluation {
+  candidate_type: "etf" | "stock" | "treasury" | "inverse" | string;
+  candidate_id: string;
+  display_name: string;
+  bucket: string | null;
+  fit_to_account: unknown;
+  fit_to_allocation: unknown;
+  data_quality: { available: boolean; level: string; [k: string]: unknown };
+  confidence: number; // 0~1
+  risk_summary: unknown;
+  evidence_summary: unknown;
+  suggested_weight: number | null;
+  max_weight: number | null;
+  reason_to_include: string;
+  reason_to_exclude: string;
+  approval_required: true;
+  auto_order_created: false;
+  auto_applied: false;
+}
