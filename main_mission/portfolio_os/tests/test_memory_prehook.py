@@ -146,6 +146,49 @@ def test_no_account_market_only():
     assert isinstance(ctx["asset_memory_shared"], list)
 
 
+def test_priority_order_account_first():
+    """개선 1: 계좌 확정안이 최우선, 공통 자산지식보다 앞."""
+    ctx = ph.prehook_context(5, "stock", "005930")
+    assert ctx["priority_order"] == list(ph.PRIORITY_ORDER)
+    assert ctx["priority_order"][0] == "account_selected_allocation"
+    # account_* 키들이 공통 asset_memory_shared 보다 앞 인덱스
+    po = ctx["priority_order"]
+    assert po.index("account_objective") < po.index("asset_memory")
+    assert po.index("account_policy") < po.index("user_global_views")
+
+
+def test_sections_six_categories():
+    """개선 3: 공통 builder 6분류 섹션 노출."""
+    ctx = ph.build_context(5, "stock", "005930")   # build_context = 공통 builder 별칭
+    assert ph.build_context is ph.prehook_context
+    for sec in ("latest", "long_thesis", "market_reaction", "user_response", "stale", "conflicts"):
+        assert sec in ctx["sections"], sec
+
+
+def test_user_response_from_lesson_user_action():
+    """개선 3: 사용자 반응 기록 = user_action 이 기록된 lesson_run."""
+    setup()
+    lr.record_lesson("stock", "005930", account_index=5,
+                     decision_context="진입 보류 제안", user_action="ignored",
+                     lesson_text="사용자가 무시")
+    ctx = ph.prehook_context(5, "stock", "005930")
+    ur = ctx["user_response"]
+    assert any(r.get("user_action") == "ignored" for r in ur), ur
+    assert ctx["sections"]["user_response"] == ur
+
+
+def test_asset_memory_with_lessons_unifies_scope():
+    """개선 2: 자산 memory + lesson_run/reliability 한 번에(7 scope 공통)."""
+    setup()
+    am.record("etf", "069500", "fact", title="코스피200 추종", body="대표 ETF")
+    lr.record_lesson("etf", "069500", decision_context="비교 제시")
+    out = ph.asset_memory_with_lessons("etf", "069500")
+    assert out["scope_type"] == "etf"
+    assert isinstance(out["memory_shared"], list) and len(out["memory_shared"]) >= 1
+    assert isinstance(out["lesson_runs"], list) and len(out["lesson_runs"]) >= 1
+    assert "reliability" in out["reliability"]
+
+
 def test_selected_allocation_loaded_from_canonical_source():
     """개선 1: 확정안(allocation_selections, status='active')이 prehook 최우선 truth 로 실제 반영.
 

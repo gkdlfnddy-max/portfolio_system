@@ -35,6 +35,19 @@ from . import asset_memory as am
 from . import lesson_runs as lr
 from .store import db as store_db
 
+# 계좌별 memory 우선 구조(SSOT, Agent 4 개선 1) — pre-hook 이 읽는 우선순위.
+# 계좌 확정안/목적/정책/lesson 이 사용자 글로벌·공통 자산지식·evidence·시장데이터보다 앞선다.
+PRIORITY_ORDER: tuple[str, ...] = (
+    "account_selected_allocation",   # 확정안 = truth(최우선)
+    "account_objective",             # 계좌 목적
+    "account_policy",                # 계좌 한도/스타일
+    "account_lessons",               # 이 계좌 과거 판단
+    "user_global_views",             # 사용자 견해(계좌 격리)
+    "asset_memory",                  # 공통 자산지식(계좌 관점 뒤)
+    "latest_evidence",               # 최신 근거
+    "market_data",                   # 가격/수급/거시
+)
+
 # scope_type → 검색 키 매핑(자산종류별 무엇으로 찾을지)
 _SCOPE_TO_TICKERLIKE = {"stock": "ticker", "etf": "ticker"}
 
@@ -281,6 +294,9 @@ def prehook_context(
     short_signals = {"prices": prices, "flows": flows, "macro": macro}
     conflicts = _detect_conflicts(long_thesis + long_views, short_signals)
 
+    # 사용자 반응 기록 — 과거 lesson_run 중 사용자가 적용/무시/수정한 것(개선 3 섹션).
+    user_response = [r for r in runs if r.get("user_action")]
+
     summary = _summarize(
         scope_type=st, scope_key=skey, allocation=allocation, views=views,
         shared_mem=shared_mem, user_mem=user_mem, evidence=evidence,
@@ -316,11 +332,54 @@ def prehook_context(
         "stale": stale_mem,                         # ⑧ 표시만
         "weak_unsourced": weak_mem,                 # 출처없는 강한기억(신뢰 불가)
         "conflicts": conflicts,                     # 상충 정보 노출
+        "user_response": user_response,             # 사용자 반응 기록(과거 적용/무시/수정)
+        # 계좌별 memory 우선순위(개선 1) — 명시적 랭킹(자동 적용 아님).
+        "priority_order": list(PRIORITY_ORDER),
+        # 공통 builder 의 6분류 섹션(개선 3) — 최신/장기/시장반응/사용자반응/stale/상충.
+        "sections": {
+            "latest": short_signals,                                  # 최신 정보
+            "long_thesis": long_thesis + long_views,                  # 장기 thesis
+            "market_reaction": {"lesson_runs": runs, "reliability": rel},  # 시장 반응 기록
+            "user_response": user_response,                           # 사용자 반응 기록
+            "stale": stale_mem,                                       # stale 정보
+            "conflicts": conflicts,                                   # 상충 정보
+        },
         "summary": summary,
         # 안전 단언(자동 적용 아님)
         "advisory_only": True,
         "applied": False,
         "generated_at": _now(),
+    }
+
+
+# 공통 pre-hook builder — Daily Review/종목분석/ETF분석/국채추천/리밸런싱이 동일 builder 를 쓴다.
+build_context = prehook_context
+
+
+def asset_memory_with_lessons(scope_type: str, scope_key: str, *,
+                              account: int | None = None, conn=None) -> dict:
+    """자산별 memory(공통+계좌) + 그 scope 의 lesson_run/reliability 를 한 번에(개선 2 통합).
+
+    7 scope(stock/etf/sector/theme/macro/event/policy) 공통. 자동 적용 없음(조회 묶음).
+    """
+    st = am._norm_enum(scope_type, am.SCOPE_TYPES, "scope_type")
+    skey = _clean(scope_key)
+    own = conn is None
+    conn = conn or store_db.connect()
+    try:
+        shared = am.search(scope_type=st, scope_key=skey, account_index="__shared__", conn=conn)
+        user = (am.search(scope_type=st, scope_key=skey, account_index=account, conn=conn)
+                if account is not None else [])
+        runs = lr.recent_runs(st, skey, conn=conn)
+        rel = lr.reliability(st, skey, conn=conn)
+    finally:
+        if own:
+            conn.close()
+    return {
+        "scope_type": st, "scope_key": skey,
+        "memory_shared": shared, "memory_user": user,
+        "lesson_runs": runs, "reliability": rel,
+        "advisory_only": True,
     }
 
 
