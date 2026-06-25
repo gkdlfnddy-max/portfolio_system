@@ -11,7 +11,8 @@ from __future__ import annotations
 import json
 
 from main_mission.portfolio_os.candidate import (
-    CANDIDATE_FIELDS, CandidateEvaluation, candidate_evaluation)
+    CANDIDATE_FIELDS, CONFIDENCE_BANDS, CandidateEvaluation,
+    candidate_evaluation, recommendation_strength)
 
 
 def test_all_standard_fields_present():
@@ -57,6 +58,33 @@ def test_no_fake_numbers_when_unknown():
 def test_confidence_clamped():
     assert candidate_evaluation("etf", "X", confidence=5.0)["confidence"] == 1.0
     assert candidate_evaluation("etf", "X", confidence=-1.0)["confidence"] == 0.0
+
+
+# --------------------------------------------------------------------------- 개선 3: 공통 추천 강도
+def test_recommendation_strength_thresholds():
+    assert recommendation_strength(0.29)["level"] == "watch"
+    assert recommendation_strength(CONFIDENCE_BANDS["low"])["level"] == "weak"   # 0.3
+    assert recommendation_strength(0.59)["level"] == "weak"
+    assert recommendation_strength(CONFIDENCE_BANDS["mid"])["level"] == "moderate"  # 0.6
+    assert recommendation_strength(None)["level"] == "watch"      # 미상 → 보수적
+    assert recommendation_strength("nope")["level"] == "watch"    # 비숫자 → 보수적
+    # 어느 강도든 항상 사용자 승인 필요
+    for c in (0.1, 0.4, 0.9):
+        assert recommendation_strength(c)["approval_required"] is True
+
+
+def test_candidate_carries_recommendation_strength():
+    c = candidate_evaluation("etf", "069500", confidence=0.7)
+    assert c["recommendation_strength"]["level"] == "moderate"
+    weak = candidate_evaluation("stock", "005930", confidence=0.4)
+    assert weak["recommendation_strength"]["level"] == "weak"
+    watch = candidate_evaluation("inverse", "252670")  # confidence 0 → watch
+    assert watch["recommendation_strength"]["level"] == "watch"
+    assert watch["recommendation_strength"]["approval_required"] is True
+
+
+def test_bands_are_ceo_rule():
+    assert CONFIDENCE_BANDS == {"low": 0.3, "mid": 0.6}
 
 
 if __name__ == "__main__":

@@ -40,10 +40,8 @@ SHIFT_THRESHOLDS = {
 #   low~mid: 약한 보수전환 — 현금밴드 소폭 상향 후보.
 #   ≥ mid  : 비교적 강한 보수전환 — 단, 항상 사람 승인.
 # **confidence 낮은데 강한 조언 금지** (CLAUDE.md §11.8).
-CONFIDENCE_BANDS = {
-    "low": 0.3,   # 이 미만 = 단정 금지(관망/주의)
-    "mid": 0.6,   # 이 이상 = 비교적 강한 보수전환(사람 승인)
-}
+# confidence→강도 임계는 candidate.py 가 SSOT. 여기서는 재노출(하위호환 import 유지).
+from .candidate import CONFIDENCE_BANDS  # noqa: E402  (SSOT 단일 진실)
 
 
 def _now() -> str:

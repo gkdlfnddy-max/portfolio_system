@@ -33,11 +33,13 @@ from datetime import datetime, timezone
 from . import decline_scan as scan_mod
 from .store import db as store_db
 
-# confidence(데이터/하락 6축) → 후보 강도 캡. decline_scan.CONFIDENCE_BANDS 와 정합.
+# confidence(데이터/하락 6축) → 후보 강도 캡. candidate.CONFIDENCE_BANDS(SSOT)에서 가져온다.
 #   < low : 단정 금지 — 관망/약한 후보만.
 #   ≥ mid : 비교적 강한 후보 가능(단, 항상 사람 승인).
-CONFIDENCE_LOW = 0.3
-CONFIDENCE_MID = 0.6
+from .candidate import CONFIDENCE_BANDS  # noqa: E402  (SSOT 단일 진실)
+
+CONFIDENCE_LOW = CONFIDENCE_BANDS["low"]
+CONFIDENCE_MID = CONFIDENCE_BANDS["mid"]
 
 # 사용자 견해 stance → 부호(데이터 일치/충돌 비교용).
 _STANCE_SIGN = {"positive": 1, "negative": -1, "neutral": 0, "observe": 0}

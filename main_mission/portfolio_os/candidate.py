@@ -47,10 +47,39 @@ def _clamp01(x: Any) -> float | None:
         return None
 
 
+# confidence → 추천 강도 임계(SSOT, 단일 진실).
+#   < low  : 단정 금지 — 관망/주의/후보만.
+#   < mid  : 약한 제안(사람 승인).
+#   ≥ mid  : 비교적 강한 제안(단, 항상 사람 승인).
+# 6축(decline_scan.confidence_judgment)·후보평가·국채·Daily Review·UI 가 이 임계를 공유한다.
+CONFIDENCE_BANDS: dict[str, float] = {"low": 0.3, "mid": 0.6}
+
+
+def recommendation_strength(confidence: Any) -> dict:
+    """confidence(0~1) → **공통 추천 강도**. 항상 사용자 승인 필요·자동 적용 없음.
+
+    숫자가 아니거나 None 이면 가장 보수적(watch)으로 취급(가짜 강한 추천 금지).
+    """
+    c = _clamp01(confidence)
+    if c is None or c < CONFIDENCE_BANDS["low"]:
+        return {"level": "watch", "label": "관망/주의", "assert_ok": False,
+                "approval_required": True,
+                "note": "신뢰도 낮음 — 단정 금지, 관망/주의·후보로만(데이터 추가 필요)."}
+    if c < CONFIDENCE_BANDS["mid"]:
+        return {"level": "weak", "label": "약한 제안", "assert_ok": False,
+                "approval_required": True,
+                "note": "신뢰도 중간 — 약한 제안(항상 사람 승인)."}
+    return {"level": "moderate", "label": "비교적 강한 제안", "assert_ok": True,
+            "approval_required": True,
+            "note": "신뢰도 높음 — 비교적 강한 제안 가능(단, 항상 사람 승인)."}
+
+
 # 표준 후보 평가 필드(SSOT) — 직렬화/소비 순서의 단일 진실.
+# recommendation_strength 는 confidence 에서 파생(공통 규칙) — factory 가 자동 부착.
 CANDIDATE_FIELDS: tuple[str, ...] = (
     "candidate_type", "candidate_id", "display_name", "bucket",
     "fit_to_account", "fit_to_allocation", "data_quality", "confidence",
+    "recommendation_strength",
     "risk_summary", "evidence_summary", "suggested_weight", "max_weight",
     "reason_to_include", "reason_to_exclude",
     "approval_required", "auto_order_created", "auto_applied",
@@ -75,6 +104,7 @@ class CandidateEvaluation(dict):
                  suggested_weight: float | None = None,
                  max_weight: float | None = None,
                  reason_to_include: str = "", reason_to_exclude: str = "") -> None:
+        conf_val = round(_clamp01(confidence) or 0.0, 3)
         super().__init__(
             candidate_type=candidate_type,
             candidate_id=candidate_id,
@@ -84,7 +114,9 @@ class CandidateEvaluation(dict):
             fit_to_allocation=fit_to_allocation,
             data_quality=(data_quality if data_quality is not None
                           else {"available": False, "level": "unknown"}),
-            confidence=round(_clamp01(confidence) or 0.0, 3),
+            confidence=conf_val,
+            # 공통 규칙(confidence→강도) 자동 부착 — 분석기마다 제각각 강하게 말하지 않게.
+            recommendation_strength=recommendation_strength(conf_val),
             risk_summary=risk_summary,
             evidence_summary=evidence_summary,
             suggested_weight=(None if suggested_weight is None

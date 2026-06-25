@@ -200,6 +200,14 @@ export interface CandidateEvaluation {
   fit_to_allocation: unknown;
   data_quality: { available: boolean; level: string; [k: string]: unknown };
   confidence: number; // 0~1
+  // confidence 파생 공통 추천 강도(항상 사용자 승인 필요·자동 적용 없음).
+  recommendation_strength: {
+    level: "watch" | "weak" | "moderate";
+    label: string;
+    assert_ok: boolean;
+    approval_required: true;
+    note: string;
+  };
   risk_summary: unknown;
   evidence_summary: unknown;
   suggested_weight: number | null;
