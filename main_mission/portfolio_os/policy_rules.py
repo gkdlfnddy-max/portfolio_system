@@ -17,6 +17,8 @@ from __future__ import annotations
 #             no_anthropic_api·no_fake_data 추가.
 HARD_RULES: dict[str, str] = {
     "human_approval_required": "사람 승인 없이 주문 금지",
+    "no_auto_order": "자동 주문 생성 금지 — 주문은 사용자 승인 후에만",
+    "no_placeholder_as_real": "placeholder/미연동 데이터를 실데이터처럼 노출 금지",
     "live_order_blocked_by_default": "live 주문 기본 차단(KIS_LIVE_CONFIRM 별도)",
     "selected_allocation_required": "selected allocation 없이 주문 후보 금지",
     "no_stale_snapshot_decision": "stale snapshot 으로 decision 금지",

@@ -28,7 +28,8 @@ def _resolve_broker(account_index: int | None, broker: str | None) -> str:
 
 
 def _require_live_confirm() -> None:
-    if os.getenv("KIS_LIVE_CONFIRM", "").strip() != "I_UNDERSTAND":
+    from .. import guards  # 지연 import — live_hard_lock predicate 의 단일 정의(guards.live_locked)
+    if guards.live_locked():
         raise RuntimeError(
             "실전(live) broker 차단 — KIS_LIVE_CONFIRM=I_UNDERSTAND 가 없습니다. "
             "모의투자(paper)에서 충분히 검증 후 CEO 승인 체크리스트로만 전환하세요 (안전 §6)."
