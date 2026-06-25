@@ -280,6 +280,52 @@ def test_classify_promotes_when_data_rich():
     assert "SOXX" in tickers_final, cl
 
 
+# --------------------------------------------------------------------------- 3-B 배선(additive 정규화)
+def test_classify_emits_normalized_candidate_evaluations():
+    setup()
+    cl = ss.classify_bucket(1, "robotics")  # 무데이터 → 전부 need_more
+    assert cl["ok"]
+    # 기존 키 무변경(호환)
+    for k in ("final_candidates", "alternatives", "excluded", "need_more_data"):
+        assert k in cl
+    norm = cl["normalized"]
+    n_existing = sum(len(cl[k]) for k in
+                     ("final_candidates", "alternatives", "excluded", "need_more_data"))
+    assert len(norm) == n_existing and len(norm) >= 1
+    for c in norm:
+        # 표준 안전 불변식
+        assert c["approval_required"] is True
+        assert c["auto_order_created"] is False
+        assert c["auto_applied"] is False
+        # selection 단계 — 가짜 비중 금지
+        assert c["suggested_weight"] is None and c["max_weight"] is None
+        # 무데이터 → 제외/보류 사유가 채워지고 데이터 미가용 정직 표기
+        assert c["reason_to_exclude"] and c["reason_to_include"] == ""
+        assert c["data_quality"]["available"] is False
+        assert c["candidate_type"] in ("etf", "stock", "treasury", "inverse")
+
+
+def test_normalized_marks_include_reason_for_final():
+    setup()
+    conn = store_db.connect()
+    try:
+        _add_universe(conn, 1, "SOXX", "iShares Semi", asset_class="equity_etf")
+        _add_constituent(conn, "SOXX", "NVDA", "NVIDIA", 10.0)
+        _add_constituent(conn, "SMH", "NVDA", "NVIDIA", 12.0)
+        _add_prices(conn, "SOXX")
+        _add_evidence(conn, "sector", etf="SOXX")
+        _add_evidence(conn, "news", etf="SOXX")
+    finally:
+        conn.close()
+    cl = ss.classify_bucket(1, "semiconductor")
+    soxx = [c for c in cl["normalized"] if c["candidate_id"] == "SOXX"]
+    assert soxx, cl["normalized"]
+    c = soxx[0]
+    assert c["reason_to_include"] and c["reason_to_exclude"] == ""
+    assert c["data_quality"]["available"] is True
+    assert c["candidate_type"] == "etf"
+
+
 # --------------------------------------------------------------------------- 우량주 필터
 def test_quality_filter_honest_none_when_no_financial_data():
     setup()

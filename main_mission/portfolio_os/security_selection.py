@@ -39,6 +39,7 @@ from . import price_history
 from . import macro_connect
 from . import user_views
 from . import investor_objective
+from .candidate import candidate_evaluation
 
 
 # ---------------------------------------------------------------------------
@@ -984,6 +985,49 @@ def _recent_performance(hist: list[dict]) -> dict:
 # ---------------------------------------------------------------------------
 # 최종 후보/대안/제외/추가확인 분류 (추천 아님 — 적합도)
 # ---------------------------------------------------------------------------
+def _candidate_type_for(bucket: str, asset_class: str | None) -> str:
+    if bucket == "treasury":
+        return "treasury"
+    if bucket == "semiconductor_inverse":
+        return "inverse"
+    if _is_etf_like(asset_class):
+        return "etf"
+    return "stock"
+
+
+def _row_to_candidate_eval(row: dict, *, bucket: str, category: str, reason: str):
+    """compare_bucket 행 + 분류 카테고리 → CandidateEvaluation(공통 SSOT).
+
+    additive 정규화 — 기존 출력은 그대로 두고 표준 포맷 view 를 추가 제공한다.
+    selection 단계는 비중을 정하지 않으므로 suggested_weight/max_weight=None(가짜 숫자 금지).
+    안전 불변식(approval_required=True · auto_order_created=False · auto_applied=False)은 factory 강제.
+    """
+    conf = row.get("confidence") or {}
+    connected = conf.get("connected_axes", 0)
+    ev_count = conf.get("evidence_count", 0)
+    available = bool(connected or ev_count)
+    if not available:
+        level = "unavailable"
+    elif conf.get("strong_conclusion_allowed"):
+        level = "connected"
+    else:
+        level = "partial"
+    include = category in ("final", "alternatives")
+    return candidate_evaluation(
+        _candidate_type_for(bucket, row.get("asset_class")),
+        row.get("ticker"),
+        display_name=row.get("name") or row.get("ticker") or "",
+        bucket=bucket,
+        data_quality={"available": available, "level": level,
+                      "connected_axes": connected, "evidence_count": ev_count},
+        confidence=conf.get("value", 0.0),
+        risk_summary=row.get("decline_risk"),
+        evidence_summary=row.get("evidence"),
+        reason_to_include=(reason if include else ""),
+        reason_to_exclude=("" if include else reason),
+    )
+
+
 def classify_bucket(account_index: int, bucket: str, *, conn=None) -> dict:
     """비교 결과를 '현 정책·관점 기준 적합도'로 분류 — 추천이 아니라 정리.
 
@@ -1025,6 +1069,17 @@ def classify_bucket(account_index: int, bucket: str, *, conn=None) -> dict:
         else:
             alts.append({**entry, "reason": "비교 가능하나 근거 부족 → 자료 보강 시 승격"})
 
+    # additive 정규화 — 모든 후보를 CandidateEvaluation 공통 포맷으로(기존 키 무변경).
+    by_ticker = {r["ticker"]: r for r in cmp["comparison"]}
+    normalized = []
+    for cat, entries in (("final", final), ("alternatives", alts),
+                         ("excluded", excluded), ("need_more_data", need_more)):
+        for e in entries:
+            row = by_ticker.get(e.get("ticker"),
+                                {"ticker": e.get("ticker"), "name": e.get("name")})
+            normalized.append(_row_to_candidate_eval(
+                row, bucket=bucket, category=cat, reason=e.get("reason", "")))
+
     return {
         "ok": True, "account_index": account_index, "bucket": bucket,
         "label": cmp["label"],
@@ -1032,6 +1087,7 @@ def classify_bucket(account_index: int, bucket: str, *, conn=None) -> dict:
         "alternatives": alts,
         "excluded": excluded,
         "need_more_data": need_more,
+        "normalized": normalized,
         "strong_conclusion_possible": cmp["strong_conclusion_possible"],
         "headline": ("적합도 분류(현 정책·관점 기준, 추천 아님)." if cmp["strong_conclusion_possible"]
                      else "데이터 부족 — final 후보 없음(정직). 자료 적재 후 재평가."),
