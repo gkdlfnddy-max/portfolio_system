@@ -4,6 +4,7 @@
 """
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 from datetime import datetime, timedelta, timezone
@@ -143,3 +144,33 @@ def test_no_account_market_only():
     assert ctx["asset_memory_user"] == []
     assert ctx["selected_allocation"] is None
     assert isinstance(ctx["asset_memory_shared"], list)
+
+
+def test_selected_allocation_loaded_from_canonical_source():
+    """개선 1: 확정안(allocation_selections, status='active')이 prehook 최우선 truth 로 실제 반영.
+
+    과거엔 존재하지 않는 'selected_allocation' 테이블 조회로 항상 None 이었음(SSOT 드리프트 버그).
+    """
+    setup()
+    now = datetime.now(timezone.utc).isoformat()
+    conn = store_db.connect()
+    try:
+        conn.execute(
+            "INSERT INTO allocation_selections(account_index, variant, allocation, status, selected_by, selected_at) "
+            "VALUES(?,?,?,?,?,?)",
+            (7, "base", json.dumps([{"ticker": "SPY", "weight_pct": 60}]), "active", "user", now))
+        # 다른 계좌 확정안 — 계좌 격리 확인용
+        conn.execute(
+            "INSERT INTO allocation_selections(account_index, variant, allocation, status, selected_by, selected_at) "
+            "VALUES(?,?,?,?,?,?)",
+            (8, "aggressive", json.dumps([{"ticker": "QQQ", "weight_pct": 80}]), "active", "user", now))
+        conn.commit()
+    finally:
+        conn.close()
+    ctx = ph.prehook_context(7, "stock", "005930")
+    sel = ctx["selected_allocation"]
+    assert sel is not None, "확정안이 prehook 최우선 truth 로 로드돼야 함(SSOT)"
+    assert sel.get("variant") == "base"
+    assert sel["allocation_rows"][0]["ticker"] == "SPY"
+    # 계좌 격리 — 8번 확정안이 7번으로 새지 않음
+    assert all(r["ticker"] != "QQQ" for r in sel["allocation_rows"])

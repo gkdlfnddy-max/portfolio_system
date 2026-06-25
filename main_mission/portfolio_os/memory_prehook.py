@@ -133,14 +133,23 @@ def _user_views(conn, account_index: int, *, ticker=None, theme=None) -> list[di
 
 
 def _selected_allocation(conn, account_index: int) -> dict | None:
-    """계좌 선택 배분(있으면). 테이블 없으면 None — 결정적으로 graceful."""
+    """계좌 확정 배분(truth) — **SSOT = selection.current()**(allocation_selections, status='active').
+
+    과거엔 존재하지 않는 'selected_allocation'(단수) 테이블을 직접 조회해 *항상 None* 이었다(버그).
+    이제 canonical 로더(selection.current)를 같은 conn 으로 호출 → 확정안이 prehook 최우선 맥락으로
+    실제 반영된다. allocation(JSON TEXT)은 allocation_rows 로 파싱해 함께 제공.
+    """
     try:
-        r = conn.execute(
-            "SELECT * FROM selected_allocation WHERE account_index=? "
-            "ORDER BY datetime(created_at) DESC LIMIT 1",
-            (int(account_index),),
-        ).fetchone()
-        return dict(r) if r else None
+        from . import selection
+        cur = selection.current(int(account_index), conn=conn)
+        if not cur:
+            return None
+        out = dict(cur)
+        try:
+            out["allocation_rows"] = json.loads(cur["allocation"]) if cur.get("allocation") else []
+        except (ValueError, TypeError):
+            out["allocation_rows"] = []
+        return out
     except Exception:
         return None
 

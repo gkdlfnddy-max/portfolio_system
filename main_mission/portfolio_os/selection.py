@@ -268,8 +268,13 @@ def select(account_index: int, proposal_id: str, variant: str, *, selected_by: s
         conn.close()
 
 
-def current(account_index: int) -> dict | None:
-    conn = store_db.connect()
+def current(account_index: int, *, conn=None) -> dict | None:
+    """확정 배분(truth)의 **단일 SSOT 로더** — allocation_selections(status='active') 최신 1건.
+
+    conn 을 넘기면 그 연결을 재사용한다(prehook 등 동일 트랜잭션). 미지정 시 자체 연결.
+    """
+    own = conn is None
+    conn = conn or store_db.connect()
     try:
         r = conn.execute(
             "SELECT * FROM allocation_selections WHERE account_index=? AND status='active' ORDER BY id DESC LIMIT 1",
@@ -277,7 +282,8 @@ def current(account_index: int) -> dict | None:
         ).fetchone()
         return dict(r) if r else None
     finally:
-        conn.close()
+        if own:
+            conn.close()
 
 
 def history(account_index: int, limit: int = 30) -> list:
