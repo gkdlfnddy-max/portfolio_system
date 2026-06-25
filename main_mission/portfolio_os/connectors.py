@@ -53,17 +53,18 @@ class ConnectorResult(dict):
     def __init__(self, name: str, *, source: str = "", data_available: bool = False,
                  freshness: dict | None = None, confidence: float = 0.0,
                  count: int = 0, stale: bool | None = None, detail: str = "") -> None:
+        # 데이터 가용성 표준(SSOT) — data 없으면 confidence/count 0 강제(가짜 데이터 금지).
+        from .data_availability import honest_confidence, honest_count
         data_available = bool(data_available)
-        if not data_available:
-            confidence = 0.0
-            count = 0
+        conf = honest_confidence(data_available, confidence)
+        cnt = honest_count(data_available, count)
         if stale is None:
             stale = (freshness.get("stale", False) if isinstance(freshness, dict)
                      else (not data_available))
         super().__init__(
             name=name, source=source, data_available=data_available,
-            freshness=freshness, confidence=round(_clamp01(confidence), 3),
-            count=max(0, int(count or 0)), stale=bool(stale), detail=detail,
+            freshness=freshness, confidence=round(conf, 3),
+            count=cnt, stale=bool(stale), detail=detail,
         )
 
     def __getattr__(self, key: str) -> Any:
