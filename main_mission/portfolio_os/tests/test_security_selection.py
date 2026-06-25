@@ -326,6 +326,23 @@ def test_normalized_marks_include_reason_for_final():
     assert c["candidate_type"] == "etf"
 
 
+def test_additive_keeps_old_keys_and_json_serializable():
+    """3-B-5 호환성 회귀: normalized 추가가 기존 키/직렬화를 깨지 않는다."""
+    import json
+    setup()
+    cmp = ss.compare_bucket(1, "semiconductor")
+    for k in ("ok", "account_index", "bucket", "label", "kind", "candidate_count",
+              "comparison", "strong_conclusion_possible", "headline", "note"):
+        assert k in cmp, k
+    cl = ss.classify_bucket(1, "semiconductor")
+    for k in ("ok", "final_candidates", "alternatives", "excluded", "need_more_data",
+              "strong_conclusion_possible", "headline", "note"):
+        assert k in cl, k
+    # normalized 포함 전체가 json 직렬화돼야 함(CandidateEvaluation dict 서브클래스 호환).
+    assert json.loads(json.dumps(cmp, ensure_ascii=False))["normalized"]
+    assert isinstance(json.loads(json.dumps(cl, ensure_ascii=False))["normalized"], list)
+
+
 def test_compare_bucket_also_emits_normalized():
     setup()  # UI 는 --compare(compare_bucket)를 소비 → 여기에도 normalized 필요
     cmp = ss.compare_bucket(1, "semiconductor")
