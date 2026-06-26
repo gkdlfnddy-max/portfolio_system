@@ -26,14 +26,27 @@ ROUNDS_DEFAULT = 3
 KNEE_PCT_DEFAULT = 2.0       # 무릎: 현재가 -2% 지정가(예측진입; 실제는 일/주 흐름 판단)
 
 
-def build_split_plan(account_index: int, picks: dict, *, prices: dict, cash_krw: float,
-                     rounds: int = ROUNDS_DEFAULT, knee_pct: float = KNEE_PCT_DEFAULT,
-                     weighting: str = "equal", markets: dict | None = None) -> dict:
-    """확정안 + picks → 분할 회차 지정가 plan(제안만, 주문 X).
+def _sell_rules(rules: dict | None) -> dict:
+    """매도 규칙 envelope — 규칙(목표/손절/보수전환)은 사전승인 대상, 재량 시그널은 제안→승인."""
+    r = rules or {}
+    return {
+        "target_pct": r.get("target_pct"),          # 목표가 도달 시 익절(사전승인 규칙)
+        "stop_pct": r.get("stop_pct"),              # 손절(사전승인 규칙)
+        "conservative_switch": r.get("conservative_switch", True),  # 보수전환 레벨(사전승인)
+        "discretionary": "propose_then_approve",    # 그 외 시그널 매도는 제안→승인(자동 X)
+    }
 
-    prices: {ticker: 현재가(>0)}.  markets: {ticker: (market, currency)} (기본 추정).
-    반환: {ok, account_index, rounds, steps[], total_target_krw, blocked,
-           requires_user_approval=True, auto_order_created=False}
+
+def build_split_plan(account_index: int, picks: dict, *, prices: dict, cash_krw: float,
+                     rounds: int = ROUNDS_DEFAULT, period_days: int = 14,
+                     knee_pct: float = KNEE_PCT_DEFAULT, weighting: str = "equal",
+                     markets: dict | None = None, sell_rules: dict | None = None) -> dict:
+    """확정안 + picks → **기간·횟수만으로** 분할 저점 지정가 전략 plan(제안만, 주문 X).
+
+    CEO 모델: 기간(period_days)+분할횟수(rounds)만 정하면 나머지(저점 사다리 가격/수량/스케줄/
+    매도규칙)는 시스템이 수립. prices:{ticker:현재가}. markets:{ticker:(market,currency)}.
+    반환: {ok, rounds, period_days, steps[](schedule_day 포함), sell_rules, total_target_krw,
+           blocked, requires_user_approval=True, auto_order_created=False}
     """
     alloc = wa.allocate(account_index, picks, weighting=weighting)
     if not alloc.get("ok"):
@@ -45,6 +58,7 @@ def build_split_plan(account_index: int, picks: dict, *, prices: dict, cash_krw:
                 "blocked": True, "requires_user_approval": True, "auto_order_created": False}
 
     rounds = max(1, int(rounds))
+    period_days = max(1, int(period_days))
     one_order_cap = float((alloc.get("limits") or {}).get("one_order_cap_pct", 5.0))
     markets = markets or {}
     steps: list[dict] = []
@@ -78,6 +92,7 @@ def build_split_plan(account_index: int, picks: dict, *, prices: dict, cash_krw:
                 "ticker": tk, "market": mkt, "currency": ccy, "side": "buy",
                 "order_type": "limit", "limit_price": limit, "qty": qty,
                 "round_no": r, "total_rounds": rounds,
+                "schedule_day": round((r - 1) * period_days / rounds),  # 기간 내 회차 분산(일)
                 "drop_pct": round(knee_pct * r, 1),          # 현재가 대비 하락률(저점 깊이)
                 "weight_pct": round(weight, 2), "cycle_pct": round(per_round_pct, 2),
                 "cycle_krw": round(cycle_krw), "bucket": h.get("bucket"),
@@ -87,16 +102,40 @@ def build_split_plan(account_index: int, picks: dict, *, prices: dict, cash_krw:
 
     return {
         "ok": True, "account_index": account_index, "rounds": rounds,
-        "knee_pct": knee_pct, "one_order_cap_pct": one_order_cap,
+        "period_days": period_days, "knee_pct": knee_pct, "one_order_cap_pct": one_order_cap,
         "steps": steps, "step_count": len(steps),
         "skipped": skipped,
+        "sell_rules": _sell_rules(sell_rules),
         "total_target_krw": round(total_target),
         "blocked": False,
         "requires_user_approval": True,
         "auto_order_created": False,
-        "note": ("분할 지정가 예측진입 제안 — 주문 아님. 회차마다 사람 승인 후 execute_round 로 집행. "
-                 "시장가 매수 금지·자동주문 0·확정안 한도 내."),
+        "note": ("기간·횟수만으로 수립한 분할 저점 지정가 전략 — 주문 아님(제안). "
+                 "전략 1회 승인 후 execute_plan 으로 예약 지정가 일괄 집행(걸리면 체결·미체결=미매수). "
+                 "시장가 매수 금지·자동주문 0·확정안 한도 내·매도는 규칙 사전승인+시그널 제안."),
     }
+
+
+def execute_plan(plan: dict, broker, account: Account, *, approved: bool,
+                 available_cash_krw: float, conn=None) -> dict:
+    """**전략 1회 승인 → 예약 지정가 일괄 집행**(CEO 확정 모델).
+
+    approved=True(전략 전체 승인)면 plan 의 모든 회차 step 을 지정가 예약주문으로 제출한다.
+    걸리면 체결, 미체결이면 매수 안 함(추격·시장가 없음). live 는 submit_order 내부 게이트(§15).
+    approved 아니면 거부(무승인 자동매매 금지).
+    """
+    if not approved:
+        return {"ok": False, "reason": "전략 승인 필요 — 무승인 집행 거부(자동매매 금지)", "submitted": 0}
+    rounds = sorted({s["round_no"] for s in plan.get("steps", [])})
+    results = []
+    for r in rounds:
+        out = execute_round(plan, r, broker, account, approved=True,
+                            available_cash_krw=available_cash_krw, conn=conn)
+        results.append(out)
+    submitted = sum(o.get("submitted", 0) for o in results)
+    return {"ok": submitted > 0, "rounds_executed": len(rounds), "submitted": submitted,
+            "by_round": results, "auto_order_created": False,
+            "note": "예약 지정가 일괄 제출 — 미체결분은 매수되지 않음(추격 없음)."}
 
 
 def execute_round(plan: dict, round_no: int, broker, account: Account, *,

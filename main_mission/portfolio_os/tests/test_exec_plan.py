@@ -105,3 +105,37 @@ def test_blocked_when_single_etf_over_cap():
     plan = exec_plan.build_split_plan(1, {"global_core": ["VOO"]}, prices=_PRICES,
                                       cash_krw=_CASH, markets=_MKT)
     assert plan["ok"] is False and plan.get("blocked") is True
+
+
+def test_period_and_sell_rules_envelope():
+    _seed()
+    plan = exec_plan.build_split_plan(1, _PICKS, prices=_PRICES, cash_krw=_CASH,
+                                      rounds=3, period_days=21, markets=_MKT,
+                                      sell_rules={"target_pct": 20, "stop_pct": 8})
+    assert plan["period_days"] == 21
+    sr = plan["sell_rules"]
+    assert sr["target_pct"] == 20 and sr["stop_pct"] == 8
+    assert sr["conservative_switch"] is True
+    assert sr["discretionary"] == "propose_then_approve"   # 재량 매도는 제안→승인
+    # 회차가 기간 내에 분산(schedule_day 증가) — 다회차를 가진 종목으로 확인
+    from collections import Counter
+    cnt = Counter(s["ticker"] for s in plan["steps"])
+    multi = next(t for t, n in cnt.items() if n >= 2)
+    seq = sorted([s for s in plan["steps"] if s["ticker"] == multi], key=lambda s: s["round_no"])
+    days = [s["schedule_day"] for s in seq]
+    assert days == sorted(days) and days[0] == 0 and days[-1] < 21
+
+
+def test_execute_plan_one_approval_all_rounds():
+    """전략 1회 승인 → 예약 지정가 전량 집행(CEO 확정 모델)."""
+    _seed()
+    plan = exec_plan.build_split_plan(1, _PICKS, prices=_PRICES, cash_krw=_CASH,
+                                      rounds=3, markets=_MKT)
+    broker = MockAdapter()
+    acc = Account(id=1, mode=broker.mode)
+    refused = exec_plan.execute_plan(plan, broker, acc, approved=False, available_cash_krw=_CASH)
+    assert refused["ok"] is False and refused["submitted"] == 0
+    out = exec_plan.execute_plan(plan, broker, acc, approved=True, available_cash_krw=_CASH)
+    assert out["ok"] and out["rounds_executed"] == 3
+    assert out["submitted"] == plan["step_count"]   # 모든 회차 step 예약 제출
+    assert out["auto_order_created"] is False
