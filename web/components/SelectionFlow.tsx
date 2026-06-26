@@ -1806,43 +1806,109 @@ function ApprovalStep({ acknowledged, onAck }: { acknowledged: boolean; onAck: (
   );
 }
 
-// ── Step 7: 분할 진입 계획 (입력 폼 — 저장은 draft) ──
-type Leg = { id: number; price: string; qtyOrAmount: string; condition: string };
-function SplitEntryStep({ legs, setLegs }: { legs: Leg[]; setLegs: (l: Leg[]) => void }) {
-  const add = () => setLegs([...legs, { id: Date.now(), price: "", qtyOrAmount: "", condition: "" }]);
-  const update = (id: number, k: keyof Leg, v: string) =>
-    setLegs(legs.map((l) => (l.id === id ? { ...l, [k]: v } : l)));
-  const remove = (id: number) => setLegs(legs.filter((l) => l.id !== id));
+// ── Step 7: 분할 진입 계획 (분할 횟수·기간만 입력 → 시스템이 저점 지정가 사다리 자동 생성) ──
+function SplitEntryStep({ accountId, picks, plan, setPlan }: {
+  accountId: number; picks: Pick[]; plan: any; setPlan: (p: any) => void;
+}) {
+  const [rounds, setRounds] = useState(3);
+  const [period, setPeriod] = useState(14);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const generate = useCallback(async () => {
+    setLoading(true); setErr(null);
+    try {
+      const res = await fetch(`/api/accounts/${accountId}/split-plan`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rounds, period_days: period,
+          picks: picks.map((p) => ({ bucket: p.bucket, ticker: p.ticker })),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) { setErr(data?.error || "생성 실패"); setPlan(null); }
+      else setPlan(data);
+    } catch (e: any) {
+      setErr(e?.message || "오류"); setPlan(null);
+    } finally { setLoading(false); }
+  }, [accountId, rounds, period, picks, setPlan]);
+
+  const steps: any[] = plan?.steps ?? [];
+  const sell = plan?.sell_rules;
   return (
     <div className="space-y-3">
       <p className="text-xs text-neutral-500">
-        진입은 <b>시장가가 아닌 지정가(예측 진입)</b>로 회차를 나눠 계획합니다. "발끝(최저점)"이 아니라
-        <b> "무릎"</b> 지점을 목표로, 일·주 단위 흐름을 보고 회차별 가격을 정합니다. 아래 입력은
-        <b> 초안(draft)으로만 저장</b>되며 주문을 생성하지 않습니다.
+        진입은 <b>시장가가 아닌 지정가(예측 진입)</b>입니다. <b>분할 횟수와 기간만</b> 정하면 시스템이
+        "무릎" 지점의 <b>저점 지정가 사다리</b>(회차가 깊을수록 더 낮은 가)를 알아서 만듭니다.
+        <b> 걸리면 체결, 미체결이면 매수하지 않습니다</b>(추격 없음). 결과는 <b>초안(draft)</b>이며 주문을 생성하지 않습니다.
       </p>
-      <div className="space-y-2">
-        {legs.map((l, i) => (
-          <div key={l.id} className="grid grid-cols-12 gap-2 items-center">
-            <div className="col-span-1 text-xs text-neutral-400 text-center">{i + 1}회</div>
-            <Input className="col-span-3" placeholder="지정가(원)" inputMode="numeric" value={l.price} onChange={(e) => update(l.id, "price", e.target.value)} />
-            <Input className="col-span-3" placeholder="수량/금액" inputMode="numeric" value={l.qtyOrAmount} onChange={(e) => update(l.id, "qtyOrAmount", e.target.value)} />
-            <Input className="col-span-4" placeholder="조건(예: 일봉 지지 확인)" value={l.condition} onChange={(e) => update(l.id, "condition", e.target.value)} />
-            <button className="col-span-1 text-neutral-300 hover:text-error text-sm" onClick={() => remove(l.id)} aria-label="삭제">✕</button>
-          </div>
-        ))}
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="text-xs text-neutral-500">분할 횟수
+          <Input className="mt-1 w-20" type="number" min={1} max={10} value={rounds}
+                 onChange={(e) => setRounds(Math.max(1, Math.min(10, Number(e.target.value) || 1)))} />
+        </label>
+        <label className="text-xs text-neutral-500">기간(일)
+          <Input className="mt-1 w-24" type="number" min={1} max={120} value={period}
+                 onChange={(e) => setPeriod(Math.max(1, Math.min(120, Number(e.target.value) || 1)))} />
+        </label>
+        <Button size="sm" onClick={generate} disabled={loading || picks.length === 0}>
+          {loading ? "생성 중…" : "저점 지정가 자동 생성"}
+        </Button>
       </div>
-      <Button size="sm" variant="outline" onClick={add}>+ 회차 추가</Button>
+      {picks.length === 0 && <p className="text-[11px] text-warning">먼저 종목을 선택하세요.</p>}
+      {err && <p className="text-[11px] text-error">{err}</p>}
+
+      {steps.length > 0 && (
+        <div className="overflow-x-auto rounded-lg border border-neutral-200">
+          <table className="w-full text-xs">
+            <thead className="bg-neutral-50 text-neutral-500">
+              <tr>
+                <th className="px-2 py-1 text-left">회차</th>
+                <th className="px-2 py-1 text-left">종목</th>
+                <th className="px-2 py-1 text-right">지정가</th>
+                <th className="px-2 py-1 text-right">수량</th>
+                <th className="px-2 py-1 text-right">저점</th>
+                <th className="px-2 py-1 text-right">시점</th>
+              </tr>
+            </thead>
+            <tbody>
+              {steps.map((s, i) => (
+                <tr key={i} className="border-t border-neutral-100">
+                  <td className="px-2 py-1">{s.round_no}/{s.total_rounds}</td>
+                  <td className="px-2 py-1 font-medium text-neutral-700">{s.ticker}</td>
+                  <td className="px-2 py-1 text-right tabular-nums">{won(s.limit_price)}</td>
+                  <td className="px-2 py-1 text-right tabular-nums">{s.qty}주</td>
+                  <td className="px-2 py-1 text-right text-neutral-400">-{s.drop_pct}%</td>
+                  <td className="px-2 py-1 text-right text-neutral-400">D+{s.schedule_day}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {plan && steps.length === 0 && (
+        <p className="text-[11px] text-neutral-500">
+          생성된 회차가 없습니다 — 회차 예산이 1주 가격보다 작거나(고가주) 현재가 미연동입니다(정직). 횟수를 줄여 보세요.
+        </p>
+      )}
+      {plan?.skipped?.length > 0 && (
+        <p className="text-[11px] text-neutral-400">제외: {plan.skipped.map((x: any) => `${x.ticker}(${x.reason})`).slice(0, 4).join(" · ")}</p>
+      )}
+      {sell && (
+        <p className="text-[11px] text-neutral-500">
+          매도 규칙: 목표 {sell.target_pct ?? "—"}% / 손절 {sell.stop_pct ?? "—"}% / 보수전환 {sell.conservative_switch ? "사용" : "—"} · 그 외 시그널은 제안→승인
+        </p>
+      )}
       <p className="text-[11px] text-neutral-400">
-        리스크 게이트(1주문 최대 비중·세션 주문 수 등)는 실제 주문 단계에서 hard-block 으로 재검증됩니다.
-        여기 입력값은 검증·반영되지 않은 초안입니다.
+        리스크 게이트(1주문 최대 비중·세션 주문 수)는 실제 주문 단계에서 hard-block 으로 재검증됩니다. 위는 미반영 초안입니다.
       </p>
     </div>
   );
 }
 
 // ── Step 8: 주문 전 최종 확인 (live hard lock) ──
-function FinalCheckStep({ legs, acknowledged, picks, alloc }: { legs: Leg[]; acknowledged: boolean; picks: Pick[]; alloc: AllocSection | null }) {
-  const filled = legs.filter((l) => l.price || l.qtyOrAmount);
+function FinalCheckStep({ plan, acknowledged, picks, alloc }: { plan: any; acknowledged: boolean; picks: Pick[]; alloc: AllocSection | null }) {
+  const filled: any[] = plan?.steps ?? [];
   const draft: any[] = (alloc?.ready && alloc.data)
     ? (alloc.data.holdings ?? alloc.data.draft_weights ?? alloc.data.allocations ?? []).filter((h: any) => Number(h.weight_pct ?? h.weight ?? 0) > 0)
     : [];
@@ -1870,11 +1936,11 @@ function FinalCheckStep({ legs, acknowledged, picks, alloc }: { legs: Leg[]; ack
           </div>
         )}
         <div className="flex justify-between pt-1 border-t border-neutral-100"><span className="text-neutral-500">초안 승인 표시</span><span>{acknowledged ? "예 (draft)" : "아니오"}</span></div>
-        <div className="flex justify-between"><span className="text-neutral-500">분할 진입 회차</span><span className="tabular-nums">{filled.length}회</span></div>
-        {filled.map((l, i) => (
-          <div key={l.id} className="flex justify-between text-xs text-neutral-500">
-            <span>· {i + 1}회 · {l.condition || "조건 없음"}</span>
-            <span className="tabular-nums">{l.price ? `${Number(l.price).toLocaleString("ko-KR")}원` : "지정가 없음"} / {l.qtyOrAmount || "—"}</span>
+        <div className="flex justify-between"><span className="text-neutral-500">분할 진입 회차</span><span className="tabular-nums">{filled.length}건(예약 지정가)</span></div>
+        {filled.map((s, i) => (
+          <div key={i} className="flex justify-between text-xs text-neutral-500">
+            <span>· {s.ticker} {s.round_no}/{s.total_rounds}회 · D+{s.schedule_day} · -{s.drop_pct}%</span>
+            <span className="tabular-nums">{Number(s.limit_price).toLocaleString("ko-KR")}원 / {s.qty}주</span>
           </div>
         ))}
       </div>
@@ -1893,7 +1959,7 @@ export function SelectionFlow({ accountId }: { accountId: number }) {
   const [step, setStep] = useState(0);
 
   const [acknowledged, setAcknowledged] = useState(false);
-  const [legs, setLegs] = useState<Leg[]>([{ id: 1, price: "", qtyOrAmount: "", condition: "" }]);
+  const [splitPlan, setSplitPlan] = useState<any>(null);   // 분할 진입 자동 생성 결과(draft)
 
   // 후보 선택(키 = `${bucket}:${ticker}`)과 메타(POST picks 구성용).
   const [selected, setSelected] = useState<Map<string, Pick>>(new Map());
@@ -2041,13 +2107,13 @@ export function SelectionFlow({ accountId }: { accountId: number }) {
       case 6:
         return <ApprovalStep acknowledged={acknowledged} onAck={setAcknowledged} />;
       case 7:
-        return <SplitEntryStep legs={legs} setLegs={setLegs} />;
+        return <SplitEntryStep accountId={accountId} picks={picks} plan={splitPlan} setPlan={setSplitPlan} />;
       case 8:
-        return <FinalCheckStep legs={legs} acknowledged={acknowledged} picks={picks} alloc={alloc} />;
+        return <FinalCheckStep plan={splitPlan} acknowledged={acknowledged} picks={picks} alloc={alloc} />;
       default:
         return null;
     }
-  }, [step, payload, buckets, acknowledged, legs, selectedTickers, togglePick, picks, equityOption, alloc, allocLoading, recalcAlloc, accountId, load]);
+  }, [step, payload, buckets, acknowledged, splitPlan, selectedTickers, togglePick, picks, equityOption, alloc, allocLoading, recalcAlloc, accountId, load]);
 
   if (loading) return <div className="text-sm text-neutral-400 py-10 text-center">불러오는 중…</div>;
 

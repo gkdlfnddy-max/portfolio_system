@@ -138,6 +138,77 @@ def execute_plan(plan: dict, broker, account: Account, *, approved: bool,
             "note": "예약 지정가 일괄 제출 — 미체결분은 매수되지 않음(추격 없음)."}
 
 
+# ---------------------------------------------------------------------------
+# CLI — 웹 '분할 진입' 자동 생성용 (기간·횟수만 받아 저점 사다리 draft 반환, 주문 X)
+# ---------------------------------------------------------------------------
+def main() -> int:
+    import argparse
+    import json
+    import sys
+
+    from . import price_history
+    try:
+        from .security_selection import _TICKER_META
+    except Exception:  # noqa: BLE001
+        _TICKER_META = {}
+
+    ap = argparse.ArgumentParser(description="분할 저점 매수 plan 자동 생성(draft, 주문 없음)")
+    ap.add_argument("--account", type=int, required=True)
+    ap.add_argument("--picks", required=True, help='JSON {"bucket":["TICKER",...]}')
+    ap.add_argument("--rounds", type=int, default=ROUNDS_DEFAULT)
+    ap.add_argument("--period", type=int, default=14)
+    ap.add_argument("--cash", type=float, default=None,
+                    help="예수금. 미지정 시 최신 account_snapshots.cash_krw 사용(횟수만 입력 지원)")
+    ap.add_argument("--knee", type=float, default=KNEE_PCT_DEFAULT)
+    a = ap.parse_args()
+
+    try:
+        picks = json.loads(a.picks)
+    except ValueError as e:
+        sys.stdout.write(json.dumps({"ok": False, "error": f"picks JSON 파싱 실패: {e}"}))
+        return 0
+
+    cash = a.cash
+    if cash is None:  # 예수금 자동 조회(최신 스냅샷) — 사용자는 횟수만 입력
+        from .store import db as _db
+        conn = _db.connect()
+        try:
+            row = conn.execute(
+                "SELECT cash_krw FROM account_snapshots WHERE account_index=? "
+                "ORDER BY datetime(captured_at) DESC, id DESC LIMIT 1", (a.account,)).fetchone()
+            cash = float(row["cash_krw"]) if row and row["cash_krw"] is not None else 0.0
+        finally:
+            conn.close()
+    if not cash or cash <= 0:
+        sys.stdout.write(json.dumps({"ok": False, "error": "예수금 없음 — 계좌 동기화(sync) 후 재시도"}))
+        return 0
+    tickers = [t for arr in (picks or {}).values() if isinstance(arr, list) for t in arr]
+    prices: dict = {}
+    markets: dict = {}
+    for t in tickers:
+        bars = price_history.load_history(t)
+        if bars:
+            try:
+                prices[t] = float(bars[-1]["close"])
+            except (TypeError, ValueError, KeyError):
+                pass
+        m = _TICKER_META.get(t, {})
+        mk = m.get("market")
+        if mk:
+            ccy = "KRW" if mk in ("KRX", "KOSPI", "KOSDAQ") else "USD"
+            markets[t] = (mk, ccy)
+
+    plan = build_split_plan(a.account, picks, prices=prices, cash_krw=cash,
+                            rounds=a.rounds, period_days=a.period, knee_pct=a.knee,
+                            markets=markets)
+    sys.stdout.write(json.dumps(plan, ensure_ascii=False))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+
+
 def execute_round(plan: dict, round_no: int, broker, account: Account, *,
                   approved: bool, available_cash_krw: float, conn=None) -> dict:
     """plan 의 특정 회차를 **승인 후** 집행 — 회차 step 들을 지정가 주문으로 제출.
