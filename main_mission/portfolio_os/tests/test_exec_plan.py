@@ -126,6 +126,19 @@ def test_period_and_sell_rules_envelope():
     assert days == sorted(days) and days[0] == 0 and days[-1] < 21
 
 
+def test_plan_token_changes_order_ids_across_cycles():
+    """다른 사이클(토큰)은 다른 client_order_id → stale idempotency 로 미래 재진입이 막히지 않음."""
+    _seed()
+    p1 = exec_plan.build_split_plan(1, _PICKS, prices=_PRICES, cash_krw=_CASH, markets=_MKT, plan_token="20260626")
+    p2 = exec_plan.build_split_plan(1, _PICKS, prices=_PRICES, cash_krw=_CASH, markets=_MKT, plan_token="20260703")
+    ids1 = {s["client_order_id"] for s in p1["steps"]}
+    ids2 = {s["client_order_id"] for s in p2["steps"]}
+    assert ids1 and ids2 and ids1.isdisjoint(ids2)
+    # 같은 토큰은 동일 ID(같은 plan 재승인은 idempotent)
+    p1b = exec_plan.build_split_plan(1, _PICKS, prices=_PRICES, cash_krw=_CASH, markets=_MKT, plan_token="20260626")
+    assert {s["client_order_id"] for s in p1b["steps"]} == ids1
+
+
 def test_execute_plan_one_approval_all_rounds():
     """전략 1회 승인 → 예약 지정가 전량 집행(CEO 확정 모델)."""
     _seed()

@@ -40,7 +40,8 @@ def _sell_rules(rules: dict | None) -> dict:
 def build_split_plan(account_index: int, picks: dict, *, prices: dict, cash_krw: float,
                      rounds: int = ROUNDS_DEFAULT, period_days: int = 14,
                      knee_pct: float = KNEE_PCT_DEFAULT, weighting: str = "equal",
-                     markets: dict | None = None, sell_rules: dict | None = None) -> dict:
+                     markets: dict | None = None, sell_rules: dict | None = None,
+                     plan_token: str | None = None) -> dict:
     """확정안 + picks → **기간·횟수만으로** 분할 저점 지정가 전략 plan(제안만, 주문 X).
 
     CEO 모델: 기간(period_days)+분할횟수(rounds)만 정하면 나머지(저점 사다리 가격/수량/스케줄/
@@ -59,6 +60,8 @@ def build_split_plan(account_index: int, picks: dict, *, prices: dict, cash_krw:
 
     rounds = max(1, int(rounds))
     period_days = max(1, int(period_days))
+    # plan_token: 같은 plan 재승인은 idempotent(중복 미제출), 다른 사이클은 새 주문ID(stale 차단 회피).
+    tok = f"-{plan_token}" if plan_token else ""
     one_order_cap = float((alloc.get("limits") or {}).get("one_order_cap_pct", 5.0))
     markets = markets or {}
     steps: list[dict] = []
@@ -97,7 +100,7 @@ def build_split_plan(account_index: int, picks: dict, *, prices: dict, cash_krw:
                 "weight_pct": round(weight, 2), "cycle_pct": round(per_round_pct, 2),
                 "cycle_krw": round(cycle_krw), "bucket": h.get("bucket"),
                 "on_unfilled": "no_chase",                    # 미체결이면 매수 안 함(추격·시장가 없음)
-                "client_order_id": f"exec-{account_index}-{tk}-r{r}",
+                "client_order_id": f"exec-{account_index}-{tk}-r{r}{tok}",
             })
 
     return {
@@ -160,6 +163,8 @@ def main() -> int:
     ap.add_argument("--cash", type=float, default=None,
                     help="예수금. 미지정 시 최신 account_snapshots.cash_krw 사용(횟수만 입력 지원)")
     ap.add_argument("--knee", type=float, default=KNEE_PCT_DEFAULT)
+    ap.add_argument("--token", default=None,
+                    help="plan 토큰(주문ID 구분자). 미지정 시 오늘 날짜(YYYYMMDD) — 사이클 간 stale 차단")
     a = ap.parse_args()
 
     try:
@@ -198,9 +203,11 @@ def main() -> int:
             ccy = "KRW" if mk in ("KRX", "KOSPI", "KOSDAQ") else "USD"
             markets[t] = (mk, ccy)
 
+    from datetime import datetime, timezone
+    token = a.token or datetime.now(timezone.utc).strftime("%Y%m%d")
     plan = build_split_plan(a.account, picks, prices=prices, cash_krw=cash,
                             rounds=a.rounds, period_days=a.period, knee_pct=a.knee,
-                            markets=markets)
+                            markets=markets, plan_token=token)
     sys.stdout.write(json.dumps(plan, ensure_ascii=False))
     return 0
 
