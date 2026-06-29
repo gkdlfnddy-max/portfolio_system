@@ -1733,6 +1733,80 @@ function AllocResult({ alloc }: { alloc: AllocSection }) {
   );
 }
 
+// ── 개별주 자동 추천(stock_reco) — 시스템이 상위 N 정직 추천, CEO가 확인·추가/수정 ──
+function StockRecoPanel({ accountId, selectedTickers, onToggle }: {
+  accountId: number;
+  selectedTickers: Set<string>;
+  onToggle: (bucket: string, cand: { ticker: string; name: string | null; asset_class: string | null }) => void;
+}) {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const fetchReco = useCallback(async () => {
+    setLoading(true); setErr(null);
+    try {
+      const r = await fetch(`/api/accounts/${accountId}/stock-reco?n=10`, { cache: "no-store" });
+      const j = await r.json();
+      if (!r.ok || !j.ok) setErr(j?.error || "추천 실패");
+      setData(j);
+    } catch (e: any) {
+      setErr(e?.message || "추천 오류");
+    } finally { setLoading(false); }
+  }, [accountId]);
+
+  const cands: any[] = data?.candidates ?? [];
+  return (
+    <div className="rounded-lg border border-violet-200 bg-violet-50/40 p-3 space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm font-medium text-violet-700">개별주 자동 추천</span>
+        <Button size="sm" variant="outline" onClick={fetchReco} disabled={loading}>
+          {loading ? "추천 중…" : data ? "다시 추천" : "상위 종목 추천받기"}
+        </Button>
+      </div>
+      <p className="text-[11px] text-neutral-500">
+        시스템이 데이터 기준으로 <b>상위 종목을 추천</b>합니다. <b>자동 반영이 아니며</b>, 사장님이 확인 후
+        직접 추가/수정합니다. 가짜 티커·점수는 만들지 않으며, 후보가 부족하면 정직하게 그만큼만 보여줍니다.
+      </p>
+      {err && <p className="text-[11px] text-error">{err}</p>}
+      {data && cands.length === 0 && (
+        <p className="text-[11px] text-warning">추천할 개별주 후보가 없습니다. {data.universe_note}</p>
+      )}
+      {cands.length > 0 && (
+        <>
+          <div className="space-y-1">
+            {cands.map((c) => {
+              const tk = String(c.candidate_id);
+              const key = `${c.bucket}:${tk}`;
+              const added = selectedTickers.has(key);
+              const dq = c.data_quality ?? {};
+              const strength = c.recommendation_strength?.level ?? "—";
+              return (
+                <div key={tk} className="flex items-center justify-between gap-2 rounded-md bg-white/70 px-2 py-1.5 text-xs">
+                  <div className="min-w-0">
+                    <span className="font-medium text-neutral-700">{c.display_name || tk}</span>
+                    <span className="text-neutral-400"> · {tk} · {c.bucket}</span>
+                    <div className="text-[10px] text-neutral-400">
+                      신뢰도 {Math.round((Number(c.confidence) || 0) * 100)}% · 강도 {strength} · 데이터 {dq.level ?? "—"}
+                      {c.reason_to_include ? ` · ${c.reason_to_include}` : ""}
+                      {c.reason_to_exclude ? ` · ⚠ ${c.reason_to_exclude}` : ""}
+                    </div>
+                  </div>
+                  <Button size="sm" variant={added ? "outline" : "primary"}
+                          onClick={() => onToggle(String(c.bucket), { ticker: tk, name: c.display_name ?? null, asset_class: "stock" })}>
+                    {added ? "추가됨 ✓" : "추가"}
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
+          <p className="text-[10px] text-neutral-400">{data.universe_note}</p>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── Step: 비중 조절 (후보 선택 → weight_allocator draft 비중) ──
 function WeightStep({
   picks, equityOption, onEquityOption, alloc, allocLoading, onRecalc,
@@ -2266,14 +2340,19 @@ export function SelectionFlow({ accountId }: { accountId: number }) {
         );
       case 5:
         return (
-          <WeightStep
-            picks={picks}
-            equityOption={equityOption}
-            onEquityOption={(v) => { setEquityOption(v); setAlloc(null); }}
-            alloc={alloc}
-            allocLoading={allocLoading}
-            onRecalc={recalcAlloc}
-          />
+          <div className="space-y-5">
+            {/* 개별주 자동 추천(stock_reco) — 시스템이 상위 N 추천, CEO가 확인·추가(자동 적용 아님). */}
+            <StockRecoPanel accountId={accountId} selectedTickers={selectedTickers}
+                            onToggle={(bucket, cand) => togglePick(bucket, cand)} />
+            <WeightStep
+              picks={picks}
+              equityOption={equityOption}
+              onEquityOption={(v) => { setEquityOption(v); setAlloc(null); }}
+              alloc={alloc}
+              allocLoading={allocLoading}
+              onRecalc={recalcAlloc}
+            />
+          </div>
         );
       case 6:
         return <ApprovalStep acknowledged={acknowledged} onAck={setAcknowledged} savedAt={draftSavedAt} />;

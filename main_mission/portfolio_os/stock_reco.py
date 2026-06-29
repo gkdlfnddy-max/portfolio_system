@@ -102,3 +102,26 @@ def recommend_stocks(account_index: int, *, n: int = 10, extra_tickers=None, con
         "universe_note": note,
         "requires_user_approval": True, "auto_order_created": False,
     }
+
+
+# ---------------------------------------------------------------------------
+# CLI — 웹 '개별주 자동 추천' 배선용 (상위 N 정직 추천, 자동 적용/주문 0)
+# ---------------------------------------------------------------------------
+def main(argv: list[str] | None = None) -> int:
+    import argparse
+    import json
+    import sys
+
+    ap = argparse.ArgumentParser(description="개별주 상위 N 자동 추천(정직 — 가짜 티커/점수 금지, 자동적용 0)")
+    ap.add_argument("--account", type=int, required=True)
+    ap.add_argument("--n", type=int, default=10, help="추천 개수(1~30)")
+    ap.add_argument("--extra", default="", help="콤마구분 추가 후보 티커(테마/CEO 제공)")
+    a = ap.parse_args(argv)
+    extra = [t.strip() for t in a.extra.split(",") if t.strip()]
+    out = recommend_stocks(a.account, n=max(1, min(30, a.n)), extra_tickers=extra or None)
+    sys.stdout.write(json.dumps(out, ensure_ascii=False))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

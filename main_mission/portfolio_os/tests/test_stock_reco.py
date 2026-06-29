@@ -49,6 +49,16 @@ def test_ranked_by_confidence_desc():
     assert confs == sorted(confs, reverse=True)
 
 
+def test_cli_emits_json(capsys):
+    setup()
+    rc = stock_reco.main(["--account", "1", "--n", "5"])
+    assert rc == 0
+    import json
+    out = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert out["ok"] is True and out["requested"] == 5
+    assert out["auto_order_created"] is False and out["requires_user_approval"] is True
+
+
 if __name__ == "__main__":
     fns = [v for k, v in list(globals().items()) if k.startswith("test_") and callable(v)]
     for f in fns:
