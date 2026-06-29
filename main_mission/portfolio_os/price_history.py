@@ -283,15 +283,35 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--seed-from-quotes", metavar="TICKER")
     ap.add_argument("--code", help="instrument_code (단일 종목 일봉 fetch 또는 seed 대상)")
+    ap.add_argument("--codes", help="콤마구분 다종목 일봉 fetch (위저드 picks 일괄 적재). KRX만 성공, 해외는 graceful 미연동")
     ap.add_argument("--account", type=int, help="KIS 계좌 index (일봉 fetch 시 키 소스)")
     ap.add_argument("--fetch-daily", action="store_true",
-                    help="KIS 일봉 적재(read-only). --account 필요. --code 지정 시 단일, 미지정 시 계좌 관심/보유 전체")
+                    help="KIS 일봉 적재(read-only). --account 필요. --code 단일 | --codes 다종목 | 미지정 시 계좌 관심/보유 전체")
     ap.add_argument("--count", type=int, default=200, help="가져올 최근 거래일 수")
     ap.add_argument("--list", action="store_true")
     args = ap.parse_args()
     if args.fetch_daily:
         if args.account is None:
             out = {"ok": False, "error": "--fetch-daily 에는 --account N 필요 (KIS 키 소스)"}
+        elif args.codes:
+            # 다종목 일괄 적재 — picks 의 각 종목을 fetch_and_store. KRX 성공, 해외(미구현)는 graceful 미연동.
+            codes = [c.strip() for c in args.codes.split(",") if c.strip()]
+            try:
+                fetcher = KisDailyBarFetcher(account_index=args.account)
+            except Exception as e:  # noqa: BLE001 — 어댑터/키 생성 실패는 명확 보고
+                fetcher = None
+                out = {"ok": False, "error": str(e), "results": []}
+            if fetcher is not None:
+                results = []
+                for c in codes:
+                    try:
+                        r = fetcher.fetch_and_store(c, count=args.count)
+                    except Exception as e:  # noqa: BLE001 — 종목별 실패 격리(한 종목이 전체 막지 않음)
+                        r = {"ok": False, "instrument_code": c, "reason": "fetch_error", "error": str(e)}
+                    results.append({"code": c, "ok": bool(r.get("ok")), "fetched": r.get("fetched"),
+                                    "reason": r.get("reason"), "range": r.get("range")})
+                loaded = sum(1 for x in results if x["ok"])
+                out = {"ok": loaded > 0, "loaded": loaded, "total": len(results), "results": results}
         elif args.code:
             try:
                 fetcher = KisDailyBarFetcher(account_index=args.account)
