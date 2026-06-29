@@ -29,3 +29,6 @@ web/*.tsbuildinfo
 
 # --- 내부 CEO 지시/메모 (발행 제외) ---
 private.txt
+
+# 런타임 산출물(webctl pid/log)
+.run/
