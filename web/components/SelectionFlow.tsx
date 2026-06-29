@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -1784,7 +1784,10 @@ function WeightStep({
 }
 
 // ── Step 6: 승인 (draft 만) ──
-function ApprovalStep({ acknowledged, onAck }: { acknowledged: boolean; onAck: (v: boolean) => void }) {
+function ApprovalStep({ acknowledged, onAck, savedAt }: { acknowledged: boolean; onAck: (v: boolean) => void; savedAt: string | null }) {
+  const savedLabel = savedAt
+    ? new Date(savedAt).toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "short" })
+    : null;
   return (
     <div className="space-y-4">
       <div className="rounded-lg bg-warning/5 border border-warning/30 p-3 text-sm text-neutral-700">
@@ -1802,6 +1805,12 @@ function ApprovalStep({ acknowledged, onAck }: { acknowledged: boolean; onAck: (
           <CheckCircle2 className="w-3.5 h-3.5" /> 초안 승인으로 표시됨 — policy·주문에는 <b>반영되지 않았습니다</b>.
         </p>
       )}
+      {/* 정직한 저장 피드백: 선택·승인 표시는 계좌별 draft 로 백엔드에 실제 저장된다(새로고침해도 유지). */}
+      <p className="text-xs text-neutral-500 flex items-center gap-1">
+        {savedLabel
+          ? <>💾 자동 저장됨 — {savedLabel} (계좌별 draft, 새로고침해도 유지)</>
+          : <>선택·carve·승인 표시는 자동으로 draft 에 저장됩니다(아직 저장된 변경 없음).</>}
+      </p>
     </div>
   );
 }
@@ -1960,6 +1969,9 @@ export function SelectionFlow({ accountId }: { accountId: number }) {
 
   const [acknowledged, setAcknowledged] = useState(false);
   const [splitPlan, setSplitPlan] = useState<any>(null);   // 분할 진입 자동 생성 결과(draft)
+  // 저장된 draft 복원이 끝나기 전엔 autosave 금지(초기 빈 상태로 서버 draft 덮어쓰기 방지).
+  const hydratedRef = useRef(false);
+  const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null); // 마지막 자동저장 시각(UI 표기)
 
   // 후보 선택(키 = `${bucket}:${ticker}`)과 메타(POST picks 구성용).
   const [selected, setSelected] = useState<Map<string, Pick>>(new Map());
@@ -2026,19 +2038,63 @@ export function SelectionFlow({ accountId }: { accountId: number }) {
   const load = useCallback(async () => {
     setLoading(true);
     setDenied(null);
+    hydratedRef.current = false; // 계좌 전환/재조회 동안 autosave 중단 → 복원 후 재개.
     try {
       const r = await fetch(`/api/accounts/${accountId}/selection`, { cache: "no-store" });
       if (r.status === 401) { setDenied("로그인이 필요합니다."); setLoading(false); return; }
       if (r.status === 403) { setDenied("이 계좌에 대한 접근 권한이 없습니다."); setLoading(false); return; }
       const j = await r.json();
       setPayload(j);
+      // 저장된 선정 draft 복원 — 고른 종목·개별주 carve·초안 승인 표시를 잃지 않는다.
+      try {
+        const dr = await fetch(`/api/accounts/${accountId}/selection-draft`, { cache: "no-store" });
+        if (dr.ok) {
+          const d = (await dr.json())?.draft;
+          if (d) {
+            const m = new Map<string, Pick>();
+            for (const p of (d.picks ?? [])) {
+              if (p?.bucket && p?.ticker) {
+                m.set(`${p.bucket}:${p.ticker}`, {
+                  bucket: p.bucket, ticker: p.ticker, name: p.name ?? null, asset_class: p.asset_class ?? null,
+                });
+              }
+            }
+            setSelected(m);
+            if (d.equity_option === "none" || d.equity_option === "5" || d.equity_option === "10") {
+              setEquityOption(d.equity_option);
+            }
+            setAcknowledged(!!d.acknowledged);
+            setDraftSavedAt(d.updated_at ?? null);
+          }
+        }
+      } catch { /* graceful: draft 없으면 빈 상태로 시작 */ }
     } catch (e: any) {
       setDenied(e?.message ?? "조회 실패");
     }
     setLoading(false);
+    hydratedRef.current = true; // 복원 완료 — 이후 변경부터 autosave.
   }, [accountId]);
 
   useEffect(() => { load(); }, [load]);
+
+  // 선정 draft 자동 저장(디바운스 700ms). 고른 종목·carve·초안 승인 표시를 백엔드 DB 에
+  // 저장만 한다 — policy/주문에는 반영하지 않는다(자동 적용 0). 복원 전에는 저장 금지.
+  useEffect(() => {
+    if (!hydratedRef.current) return;
+    // 아무것도 안 고른 빈 초기 상태는 굳이 저장하지 않음(빈 row 생성 방지).
+    if (picks.length === 0 && equityOption === "none" && !acknowledged) return;
+    const t = setTimeout(() => {
+      fetch(`/api/accounts/${accountId}/selection-draft`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ picks, equity_option: equityOption, acknowledged }),
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => { if (j?.ok) setDraftSavedAt(new Date().toISOString()); })
+        .catch(() => { /* graceful: 저장 실패는 다음 변경 때 재시도 */ });
+    }, 700);
+    return () => clearTimeout(t);
+  }, [accountId, picks, equityOption, acknowledged]);
 
   const order = payload?.bucket_order ?? ["global_core", "robotics", "semiconductor", "semiconductor_inverse", "treasury"];
   // Step 2–5 매핑: 글로벌코어 / 로봇 / 반도체 / (반도체인버스+국채 묶음 — 헤지·국채)
@@ -2105,7 +2161,7 @@ export function SelectionFlow({ accountId }: { accountId: number }) {
           />
         );
       case 6:
-        return <ApprovalStep acknowledged={acknowledged} onAck={setAcknowledged} />;
+        return <ApprovalStep acknowledged={acknowledged} onAck={setAcknowledged} savedAt={draftSavedAt} />;
       case 7:
         return <SplitEntryStep accountId={accountId} picks={picks} plan={splitPlan} setPlan={setSplitPlan} />;
       case 8:
@@ -2113,7 +2169,7 @@ export function SelectionFlow({ accountId }: { accountId: number }) {
       default:
         return null;
     }
-  }, [step, payload, buckets, acknowledged, splitPlan, selectedTickers, togglePick, picks, equityOption, alloc, allocLoading, recalcAlloc, accountId, load]);
+  }, [step, payload, buckets, acknowledged, splitPlan, selectedTickers, togglePick, picks, equityOption, alloc, allocLoading, recalcAlloc, accountId, load, draftSavedAt]);
 
   if (loading) return <div className="text-sm text-neutral-400 py-10 text-center">불러오는 중…</div>;
 

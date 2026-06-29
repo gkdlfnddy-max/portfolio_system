@@ -342,6 +342,20 @@ CREATE TABLE IF NOT EXISTS allocation_selections (
 );
 CREATE INDEX IF NOT EXISTS idx_allocsel ON allocation_selections(account_index, id DESC);
 
+-- 세부 선정 위저드(종목·ETF 선정 화면)의 작업중 draft — 계좌당 현재 1건(덮어쓰기).
+-- ⚠️ 이것은 policy/주문이 아니다. 화면에서 고른 종목·개별주 carve·초안 승인 표시를
+--    "잃지 않게" 저장만 한다(새로고침/재접속 복원용). 실제 반영은 confirmed allocation +
+--    리스크 게이트 + CEO 최종 승인 단계에서만. (allocation_selections = 확정 truth, 별개)
+CREATE TABLE IF NOT EXISTS selection_drafts (
+    account_index   INTEGER PRIMARY KEY,          -- 계좌당 현재 draft 1건 (upsert)
+    proposal_id     TEXT,                          -- 어떤 확정 3안 기준으로 골랐는지(staleness 참고)
+    picks_json      TEXT NOT NULL DEFAULT '[]',    -- JSON [{bucket,ticker,name,asset_class}]
+    equity_option   TEXT NOT NULL DEFAULT 'none',  -- 개별주 carve: none|5|10 (위험자산 60% 내 분배)
+    acknowledged    INTEGER NOT NULL DEFAULT 0,    -- 초안 승인 표시(0/1) — policy/주문 미반영
+    acknowledged_at TEXT,                          -- 초안 승인 표시 시각
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- 대전제 정리 시 도출된 개선 제안(조언) + 사람의 반영/보류 결정 (감사·append-only 성격).
 -- 출처: rule(규칙) | lesson:<id>(우리 메모리) | benchmark(외부 사례) | research(Claude 외부조사).
 CREATE TABLE IF NOT EXISTS advice_items (
