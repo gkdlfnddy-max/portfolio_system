@@ -975,3 +975,83 @@ CREATE TABLE IF NOT EXISTS fundamentals (
     UNIQUE(ticker, period)
 );
 CREATE INDEX IF NOT EXISTS idx_fundamentals_ticker ON fundamentals(ticker, period);
+
+-- ============================================================================
+-- 종목/ETF 공통 지식 계층 (계좌 무관) — CEO 지시: 종목/ETF DB·Memory 계층 명확화.
+--   instrument_master / instrument_theme_map / instrument_sector_map.
+--   "투자 가능 후보군 + 분류 체계" 관리(특정 계좌 판단 아님). 가짜 티커 금지(검증된 것만).
+--   기존 asset_memory(scope=stock/etf/sector/theme, account NULL=공통)와 보완 관계 —
+--   master 는 정규화된 분류 사실, asset_memory 는 누적 해석/메모리.
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS instrument_master (
+    ticker          TEXT PRIMARY KEY,         -- 6자리(KRX) 또는 심볼(US)
+    market          TEXT NOT NULL,            -- KRX | US
+    name            TEXT NOT NULL,
+    asset_class     TEXT NOT NULL,            -- stock | equity_etf | inverse_etf | leveraged_etf | bond_etf | dividend_etf
+    is_etf          INTEGER NOT NULL DEFAULT 0,
+    is_inverse      INTEGER NOT NULL DEFAULT 0,
+    is_leveraged    INTEGER NOT NULL DEFAULT 0,
+    country         TEXT,                     -- KR | US | global
+    currency        TEXT,                     -- KRW | USD
+    exchange        TEXT,                     -- KOSPI|KOSDAQ|NYSE|NASDAQ|AMEX|US
+    verified        INTEGER NOT NULL DEFAULT 0,   -- 실재 검증 통과(가짜 티커 금지)
+    verified_source TEXT,                     -- dart(KRX corp_map) | curated | kis | yahoo
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_instr_master_class ON instrument_master(asset_class);
+
+-- 종목/ETF ↔ 테마 매핑 (다대다). relation: core(핵심)|adjacent(인접)|hedge(헤지).
+CREATE TABLE IF NOT EXISTS instrument_theme_map (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticker      TEXT NOT NULL,
+    theme_key   TEXT NOT NULL,                -- 반도체|2차전지|바이오|로봇|AI|방산|조선|금융|배당|...
+    relation    TEXT NOT NULL DEFAULT 'core', -- core | adjacent | hedge
+    source      TEXT,                          -- curated | adjacency | user
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(ticker, theme_key)
+);
+CREATE INDEX IF NOT EXISTS idx_instr_theme ON instrument_theme_map(theme_key);
+
+-- 종목/ETF ↔ 섹터/산업 매핑. parent_sector: 대분류(IT|소재|헬스케어|산업재|금융|...).
+CREATE TABLE IF NOT EXISTS instrument_sector_map (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticker        TEXT NOT NULL,
+    sector_key    TEXT NOT NULL,              -- 반도체|배터리|제약바이오|방위산업|조선|은행|...
+    parent_sector TEXT,
+    source        TEXT,
+    created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(ticker, sector_key)
+);
+CREATE INDEX IF NOT EXISTS idx_instr_sector ON instrument_sector_map(sector_key);
+
+-- ============================================================================
+-- 계좌별 추천 계층(신규 2종) — 공통 후보를 계좌 성향으로 결합한 "추천 초안"과 CEO 피드백.
+--   profile/watchlist 는 기존 재사용(investor_profile/portfolio_policies/universe_instruments/
+--   user_views). 여기는 개별주/ETF 자동추천 전용 draft + 피드백(선택/삭제/수정).
+--   ⚠️ draft 전용 — policy/주문 미반영. CEO 승인 전까지 주문 아님.
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS account_reco_draft (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_index INTEGER NOT NULL,
+    request_kind  TEXT NOT NULL,              -- theme | sector | individual | etf | mixed
+    request_key   TEXT,                        -- 예: '반도체'
+    kind_filter   TEXT,                        -- stock | etf | all
+    candidates    TEXT NOT NULL,               -- JSON snapshot [{ticker,name,asset_class,confidence,fit_to_account,...}]
+    note          TEXT,
+    status        TEXT NOT NULL DEFAULT 'draft', -- draft | superseded
+    created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_reco_draft ON account_reco_draft(account_index, id DESC);
+
+CREATE TABLE IF NOT EXISTS account_reco_feedback (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_index INTEGER NOT NULL,
+    ticker        TEXT NOT NULL,
+    action        TEXT NOT NULL,               -- selected | removed | modified | ignored
+    reco_draft_id INTEGER,
+    request_key   TEXT,
+    note          TEXT,
+    created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_reco_feedback ON account_reco_feedback(account_index, id DESC);

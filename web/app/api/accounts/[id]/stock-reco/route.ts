@@ -16,11 +16,11 @@ function accId(id: string): number | null {
   return Number.isInteger(n) && n >= 1 ? n : null;
 }
 
-async function runPy(args: string[]) {
+async function runPy(mod: string, args: string[]) {
   const root = path.resolve(process.cwd(), "..");
   for (const py of [path.resolve(root, ".venv", "bin", "python"), "python", "python3"]) {
     try {
-      const { stdout } = await pexec(py, ["-m", "main_mission.portfolio_os.stock_reco", ...args], {
+      const { stdout } = await pexec(py, ["-m", `main_mission.portfolio_os.${mod}`, ...args], {
         cwd: root, timeout: 30000, env: { ...process.env, PYTHONIOENCODING: "utf-8" }, maxBuffer: 4 * 1024 * 1024,
       });
       const text = stdout.trim();
@@ -37,6 +37,7 @@ async function runPy(args: string[]) {
   throw new Error("python 미발견");
 }
 
+// 추천 조회. ?list=themes → 공통 테마 목록. theme/sector 지정 → 2계층(공통×계좌) 추천. 기본 → 개별주.
 export async function GET(req: Request, { params }: { params: { id: string } }) {
   const id = accId(params.id);
   if (id === null) return NextResponse.json({ ok: false, error: "invalid id" }, { status: 400 });
@@ -44,15 +45,47 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   const ag = await requireAccountUnlocked(id, req); if (ag) return ag;
 
   const url = new URL(req.url);
-  const n = Math.max(1, Math.min(30, parseInt(url.searchParams.get("n") ?? "10", 10) || 10));
-  const extra = (url.searchParams.get("extra") ?? "").trim();
-
   try {
-    const args = ["--account", String(id), "--n", String(n)];
-    if (extra) args.push("--extra", extra);
-    const out = await runPy(args);
+    if (url.searchParams.get("list") === "themes") {
+      const out = await runPy("instrument_master", ["--list-themes"]);
+      return NextResponse.json({ ...out, readonly: true });
+    }
+    const n = Math.max(1, Math.min(30, parseInt(url.searchParams.get("n") ?? "10", 10) || 10));
+    const theme = (url.searchParams.get("theme") ?? "").trim();
+    const sector = (url.searchParams.get("sector") ?? "").trim();
+    const kind = ["stock", "etf", "all"].includes(url.searchParams.get("kind") ?? "") ? url.searchParams.get("kind")! : "all";
+    const extra = (url.searchParams.get("extra") ?? "").trim();
+
+    const args = ["--account", String(id), "--n", String(n), "--kind", kind];
+    if (theme) args.push("--theme", theme);
+    else if (sector) args.push("--sector", sector);
+    else if (extra) args.push("--extra", extra);
+    const out = await runPy("stock_reco", args);
     return NextResponse.json({ ...out, readonly: true });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message ?? "추천 실패" }, { status: 500 });
+  }
+}
+
+// CEO 피드백(선택/삭제/수정/무시) 기록 — 계좌별 학습 입력. 주문 아님.
+export async function POST(req: Request, { params }: { params: { id: string } }) {
+  const id = accId(params.id);
+  if (id === null) return NextResponse.json({ ok: false, error: "invalid id" }, { status: 400 });
+  const az = await requireAccountAccessAndUnlocked(id); if (az) return az;
+  const ag = await requireAccountUnlocked(id, req); if (ag) return ag;
+
+  const body = await req.json().catch(() => ({} as any));
+  const ticker = String(body?.ticker ?? "").trim();
+  const action = String(body?.action ?? "").trim();
+  if (!ticker || !["selected", "removed", "modified", "ignored"].includes(action)) {
+    return NextResponse.json({ ok: false, error: "ticker + action(selected|removed|modified|ignored) 필요" }, { status: 400 });
+  }
+  const args = ["--account", String(id), "--feedback", action, "--ticker", ticker];
+  if (body?.request_key) args.push("--theme", String(body.request_key));
+  try {
+    const out = await runPy("stock_reco", args);
+    return NextResponse.json({ ...out, readonly: true });
+  } catch (e: any) {
+    return NextResponse.json({ ok: false, error: e?.message ?? "피드백 실패" }, { status: 500 });
   }
 }

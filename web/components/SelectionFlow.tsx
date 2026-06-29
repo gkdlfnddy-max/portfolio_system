@@ -1733,67 +1733,117 @@ function AllocResult({ alloc }: { alloc: AllocSection }) {
   );
 }
 
-// ── 개별주 자동 추천(stock_reco) — 시스템이 상위 N 정직 추천, CEO가 확인·추가/수정 ──
+// ── 종목/ETF 자동 추천 — 공통 후보(테마/섹터) × 계좌 성향 결합. CEO가 확인·추가/수정 ──
 function StockRecoPanel({ accountId, selectedTickers, onToggle }: {
   accountId: number;
   selectedTickers: Set<string>;
   onToggle: (bucket: string, cand: { ticker: string; name: string | null; asset_class: string | null }) => void;
 }) {
+  const [themes, setThemes] = useState<any[]>([]);
+  const [theme, setTheme] = useState<string>("");
+  const [kind, setKind] = useState<"all" | "stock" | "etf">("all");
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  // 공통 테마 목록(계좌 무관) 1회 로드.
+  useEffect(() => {
+    let off = false;
+    (async () => {
+      try {
+        const r = await fetch(`/api/accounts/${accountId}/stock-reco?list=themes`, { cache: "no-store" });
+        const j = await r.json();
+        if (!off && j?.ok) setThemes(j.themes ?? []);
+      } catch { /* graceful */ }
+    })();
+    return () => { off = true; };
+  }, [accountId]);
+
   const fetchReco = useCallback(async () => {
+    if (!theme) { setErr("테마를 선택하세요."); return; }
     setLoading(true); setErr(null);
     try {
-      const r = await fetch(`/api/accounts/${accountId}/stock-reco?n=10`, { cache: "no-store" });
+      const r = await fetch(`/api/accounts/${accountId}/stock-reco?theme=${encodeURIComponent(theme)}&kind=${kind}&n=12`, { cache: "no-store" });
       const j = await r.json();
       if (!r.ok || !j.ok) setErr(j?.error || "추천 실패");
       setData(j);
     } catch (e: any) {
       setErr(e?.message || "추천 오류");
     } finally { setLoading(false); }
-  }, [accountId]);
+  }, [accountId, theme, kind]);
+
+  // 추가/삭제 시 계좌 피드백 기록(학습 입력). 주문 아님.
+  const feedback = useCallback((ticker: string, action: "selected" | "removed") => {
+    fetch(`/api/accounts/${accountId}/stock-reco`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ticker, action, request_key: theme }),
+    }).catch(() => { /* graceful: 피드백 실패는 무시 */ });
+  }, [accountId, theme]);
 
   const cands: any[] = data?.candidates ?? [];
+  const lens = data?.lens;
   return (
     <div className="rounded-lg border border-violet-200 bg-violet-50/40 p-3 space-y-2">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm font-medium text-violet-700">개별주 자동 추천</span>
-        <Button size="sm" variant="outline" onClick={fetchReco} disabled={loading}>
-          {loading ? "추천 중…" : data ? "다시 추천" : "상위 종목 추천받기"}
+        <span className="text-sm font-medium text-violet-700">종목/ETF 자동 추천</span>
+        <select className="text-xs border border-neutral-300 rounded px-1.5 py-1 bg-white"
+                value={theme} onChange={(e) => setTheme(e.target.value)}>
+          <option value="">테마 선택…</option>
+          {themes.map((t) => (
+            <option key={t.theme} value={t.theme}>{t.theme} ({t.count}종)</option>
+          ))}
+        </select>
+        <div className="inline-flex rounded border border-neutral-300 overflow-hidden text-xs">
+          {(["all", "stock", "etf"] as const).map((k) => (
+            <button key={k} onClick={() => setKind(k)}
+                    className={`px-2 py-1 ${kind === k ? "bg-violet-600 text-white" : "bg-white text-neutral-600"}`}>
+              {k === "all" ? "전체" : k === "stock" ? "개별주" : "ETF"}
+            </button>
+          ))}
+        </div>
+        <Button size="sm" variant="outline" onClick={fetchReco} disabled={loading || !theme}>
+          {loading ? "추천 중…" : "추천받기"}
         </Button>
       </div>
       <p className="text-[11px] text-neutral-500">
-        시스템이 데이터 기준으로 <b>상위 종목을 추천</b>합니다. <b>자동 반영이 아니며</b>, 사장님이 확인 후
-        직접 추가/수정합니다. 가짜 티커·점수는 만들지 않으며, 후보가 부족하면 정직하게 그만큼만 보여줍니다.
+        공통 종목/ETF DB에서 <b>{theme || "테마"}</b> 후보를 가져와 <b>이 계좌 성향</b>으로 맞춤 정렬합니다.
+        <b> 자동 반영이 아니며</b>, 사장님이 확인 후 추가/수정합니다. 가짜 티커·점수는 만들지 않습니다.
+        {lens && (
+          <span className="text-neutral-400"> (계좌 목적={lens.goal ?? "미설정"} · 성향={lens.risk ?? "미설정"})</span>
+        )}
       </p>
       {err && <p className="text-[11px] text-error">{err}</p>}
       {data && cands.length === 0 && (
-        <p className="text-[11px] text-warning">추천할 개별주 후보가 없습니다. {data.universe_note}</p>
+        <p className="text-[11px] text-warning">후보가 없습니다. {data.universe_note}</p>
       )}
       {cands.length > 0 && (
         <>
           <div className="space-y-1">
             {cands.map((c) => {
               const tk = String(c.candidate_id);
+              const isEtf = c.candidate_type === "etf";
               const key = `${c.bucket}:${tk}`;
               const added = selectedTickers.has(key);
-              const dq = c.data_quality ?? {};
-              const strength = c.recommendation_strength?.level ?? "—";
+              const fit = c.fit_to_account ?? {};
               return (
                 <div key={tk} className="flex items-center justify-between gap-2 rounded-md bg-white/70 px-2 py-1.5 text-xs">
                   <div className="min-w-0">
                     <span className="font-medium text-neutral-700">{c.display_name || tk}</span>
-                    <span className="text-neutral-400"> · {tk} · {c.bucket}</span>
+                    <span className={`ml-1 px-1 rounded text-[9px] ${isEtf ? "bg-sky-100 text-sky-700" : "bg-amber-100 text-amber-700"}`}>
+                      {isEtf ? "ETF" : "개별주"}
+                    </span>
+                    <span className="text-neutral-400"> · {tk}</span>
                     <div className="text-[10px] text-neutral-400">
-                      신뢰도 {Math.round((Number(c.confidence) || 0) * 100)}% · 강도 {strength} · 데이터 {dq.level ?? "—"}
-                      {c.reason_to_include ? ` · ${c.reason_to_include}` : ""}
-                      {c.reason_to_exclude ? ` · ⚠ ${c.reason_to_exclude}` : ""}
+                      적합도 {Math.round((Number(fit.score) || 0) * 100)}% · 신뢰도 {Math.round((Number(c.confidence) || 0) * 100)}%
+                      {fit.reason ? ` · ${fit.reason}` : ""}
                     </div>
                   </div>
                   <Button size="sm" variant={added ? "outline" : "primary"}
-                          onClick={() => onToggle(String(c.bucket), { ticker: tk, name: c.display_name ?? null, asset_class: "stock" })}>
+                          onClick={() => {
+                            const willAdd = !added;
+                            onToggle(String(c.bucket || "individual"), { ticker: tk, name: c.display_name ?? null, asset_class: c.asset_class ?? (isEtf ? "etf" : "stock") });
+                            feedback(tk, willAdd ? "selected" : "removed");
+                          }}>
                     {added ? "추가됨 ✓" : "추가"}
                   </Button>
                 </div>
