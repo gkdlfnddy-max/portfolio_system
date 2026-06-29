@@ -187,11 +187,11 @@ def _fit_to_account(row: dict, lens: dict) -> dict:
 
 
 def recommend(account_index: int, *, theme: str | None = None, sector: str | None = None,
-              kind: str = "all", n: int = 10, conn=None) -> dict:
+              bucket: str | None = None, kind: str = "all", n: int = 10, conn=None) -> dict:
     """공통 후보(instrument_master) × 계좌 렌즈 → 계좌 맞춤 추천(draft). 주문 0.
 
-    theme/sector 로 후보군을 공통 DB 에서 가져오고, 계좌 제외종목을 빼고, fit_to_account 로 정렬.
-    kind: stock(개별주)|etf|all.
+    theme/sector/bucket 으로 후보군을 공통 DB 에서 가져오고, 계좌 제외종목을 빼고, fit_to_account 로 정렬.
+    kind: stock(개별주)|etf|all.  bucket: 선정 위저드 bucket(global_core/robotics/semiconductor/...).
     """
     from . import instrument_master as im
     own = conn is None
@@ -203,6 +203,9 @@ def recommend(account_index: int, *, theme: str | None = None, sector: str | Non
         elif sector:
             rows = im.by_sector(sector, kind=kind, conn=conn)
             req_kind, req_key = "sector", sector
+        elif bucket:
+            rows = im.by_bucket(bucket, kind=kind, conn=conn)
+            req_kind, req_key = "bucket", bucket
         else:
             # 테마/섹터 미지정 — 종목 bearing bucket 의 stock 후보(기존 경로 재사용).
             base = recommend_stocks(account_index, n=max(n, 20), conn=conn)
@@ -302,6 +305,7 @@ def main(argv: list[str] | None = None) -> int:
     # 2계층 결합(공통 후보 × 계좌 성향) — 테마/섹터 지정 시 instrument_master 후보군 사용.
     ap.add_argument("--theme", help="테마 후보(공통 DB) → 계좌 맞춤 추천")
     ap.add_argument("--sector", help="섹터 후보(공통 DB) → 계좌 맞춤 추천")
+    ap.add_argument("--bucket", help="위저드 bucket 후보(global_core/robotics/...) → 계좌 맞춤 추천")
     ap.add_argument("--kind", default="all", choices=["stock", "etf", "all"], help="개별주|ETF|전체")
     ap.add_argument("--save-draft", action="store_true", help="추천 결과를 계좌 draft 로 저장")
     # 피드백 기록(선택/삭제/수정/무시)
@@ -320,8 +324,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     n = max(1, min(30, a.n))
-    if a.theme or a.sector:
-        out = recommend(a.account, theme=a.theme, sector=a.sector, kind=a.kind, n=n)
+    if a.theme or a.sector or a.bucket:
+        out = recommend(a.account, theme=a.theme, sector=a.sector, bucket=a.bucket, kind=a.kind, n=n)
         if a.save_draft and out.get("ok"):
             d = save_draft(a.account, request_kind=out["request_kind"], request_key=out["request_key"],
                            kind=a.kind, candidates=out["candidates"], note=out.get("universe_note"))

@@ -134,6 +134,7 @@ const STEPS = [
   "글로벌 코어",
   "로봇",
   "반도체",
+  "개별주",
   "헤지·국채",
   "비중 조절",
   "승인",
@@ -1524,10 +1525,78 @@ function CandidateRow({
   );
 }
 
+// ── 선택된 개별주 목록(asset_class=stock) — 개별주 스텝에서 현재 선택 확인·제거 ──
+function SelectedIndividualList({ picks, onRemove }: { picks: Pick[]; onRemove: (p: Pick) => void }) {
+  const stocks = picks.filter((p) => p.asset_class === "stock");
+  if (stocks.length === 0) {
+    return <p className="text-[11px] text-neutral-400">선택된 개별주가 없습니다 — 위에서 추천받아 추가하세요.</p>;
+  }
+  return (
+    <div className="rounded-lg border border-neutral-200 p-2.5">
+      <div className="text-xs font-medium text-neutral-700 mb-1.5">선택된 개별주 ({stocks.length}종)</div>
+      <div className="flex flex-wrap gap-1.5">
+        {stocks.map((p) => (
+          <span key={`${p.bucket}:${p.ticker}`} className="inline-flex items-center gap-1 rounded bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[11px]">
+            {p.name || p.ticker} <span className="text-neutral-400">{p.ticker}</span>
+            <button className="text-neutral-400 hover:text-error" onClick={() => onRemove(p)}>✕</button>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── bucket ETF 자동 추천 — 계좌 성향 기준으로 이 bucket 의 ETF 를 추천(확인 후 추가) ──
+function BucketRecoPanel({ accountId, bucket, label, selectedTickers, onToggle }: {
+  accountId: number; bucket: string; label: string;
+  selectedTickers: Set<string>; onToggle: (cand: any) => void;
+}) {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const fetchReco = useCallback(async () => {
+    setLoading(true); setErr(null);
+    try {
+      const r = await fetch(`/api/accounts/${accountId}/stock-reco?bucket=${encodeURIComponent(bucket)}&kind=etf&n=8`, { cache: "no-store" });
+      const j = await r.json();
+      if (!r.ok || !j.ok) setErr(j?.error || "추천 실패");
+      setData(j);
+    } catch (e: any) { setErr(e?.message || "추천 오류"); } finally { setLoading(false); }
+  }, [accountId, bucket]);
+  const cands: any[] = data?.candidates ?? [];
+  const lens = data?.lens;
+  return (
+    <div className="rounded-lg border border-emerald-200 bg-emerald-50/40 p-2.5 space-y-1.5">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-medium text-emerald-700">{label} ETF 자동 추천</span>
+        <Button size="sm" variant="outline" onClick={fetchReco} disabled={loading}>{loading ? "추천 중…" : "추천받기"}</Button>
+        {lens && <span className="text-[10px] text-neutral-400">(목적 {lens.goal ?? "미설정"} · 성향 {lens.risk ?? "미설정"})</span>}
+      </div>
+      <p className="text-[11px] text-neutral-500">계좌 성향 기준 ETF 추천. <b>자동 반영 아님</b> — 확인 후 추가.</p>
+      {err && <p className="text-[11px] text-error">{err}</p>}
+      {data && cands.length === 0 && <p className="text-[11px] text-warning">추천 후보 없음. {data.universe_note}</p>}
+      {cands.map((c) => {
+        const tk = String(c.candidate_id);
+        const added = selectedTickers.has(`${bucket}:${tk}`);
+        const fit = c.fit_to_account ?? {};
+        return (
+          <div key={tk} className="flex items-center justify-between gap-2 rounded bg-white/70 px-2 py-1 text-xs">
+            <span><b className="text-neutral-700">{c.display_name || tk}</b><span className="text-neutral-400"> · {tk} · 적합도 {Math.round((Number(fit.score) || 0) * 100)}%</span></span>
+            <Button size="sm" variant={added ? "outline" : "primary"}
+                    onClick={() => onToggle({ ticker: tk, name: c.display_name, asset_class: c.asset_class })}>
+              {added ? "추가됨 ✓" : "추가"}
+            </Button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function BucketStep({
-  sec, label, bucket, selectedTickers, onToggle,
+  accountId, sec, label, bucket, selectedTickers, onToggle,
 }: {
-  sec: Section; label: string; bucket: string;
+  accountId: number; sec: Section; label: string; bucket: string;
   selectedTickers: Set<string>; onToggle: (cand: any) => void;
 }) {
   if (!sec?.ready || !sec.data) return <NotReady note={sec?.note} />;
@@ -1544,6 +1613,11 @@ function BucketStep({
   const headline: string | null = d.headline ?? null;
   return (
     <div className="space-y-4">
+      {/* bucket ETF 자동 추천(계좌 맞춤) — 수동 비교 후보 위에. 둘 다 제공(자동추천+선택). */}
+      {bucket !== "treasury" && (
+        <BucketRecoPanel accountId={accountId} bucket={bucket} label={label}
+                         selectedTickers={selectedTickers} onToggle={onToggle} />
+      )}
       <AvailabilityRow avail={aggAvail} />
       {weak ? (
         <div className="rounded-lg border border-dashed border-warning/40 bg-warning/5 p-3 text-sm text-warning flex items-center gap-2">
@@ -2342,6 +2416,7 @@ export function SelectionFlow({ accountId }: { accountId: number }) {
   const stepContent = useMemo(() => {
     const bstep = (b: string) => (
       <BucketStep
+        accountId={accountId}
         sec={buckets[b] ?? { ready: false, data: null }}
         label={BUCKET_LABEL[b]}
         bucket={b}
@@ -2376,6 +2451,19 @@ export function SelectionFlow({ accountId }: { accountId: number }) {
       case 3:
         return bstep("semiconductor");
       case 4:
+        // 개별주 — 전용 스텝. 시스템 자동 추천(테마별) + 확인·추가. 비중(carve %)은 '비중 조절'에서.
+        return (
+          <div className="space-y-4">
+            <div className="rounded-lg border border-amber-200 bg-amber-50/40 p-3 text-sm text-neutral-700">
+              <b>개별주 선택</b> — 테마를 고르면 시스템이 계좌 성향에 맞는 개별주를 자동 추천합니다.
+              확인 후 추가하세요(자동 반영 아님). 개별주 비중(5%/10% carve)은 다음 <b>"비중 조절"</b> 단계에서 정합니다.
+            </div>
+            <StockRecoPanel accountId={accountId} selectedTickers={selectedTickers}
+                            onToggle={(bucket, cand) => togglePick(bucket, cand)} />
+            <SelectedIndividualList picks={picks} onRemove={(p) => togglePick(p.bucket, { ticker: p.ticker, name: p.name, asset_class: p.asset_class })} />
+          </div>
+        );
+      case 5:
         return (
           <div className="space-y-6">
             <div>
@@ -2388,27 +2476,22 @@ export function SelectionFlow({ accountId }: { accountId: number }) {
             </div>
           </div>
         );
-      case 5:
-        return (
-          <div className="space-y-5">
-            {/* 개별주 자동 추천(stock_reco) — 시스템이 상위 N 추천, CEO가 확인·추가(자동 적용 아님). */}
-            <StockRecoPanel accountId={accountId} selectedTickers={selectedTickers}
-                            onToggle={(bucket, cand) => togglePick(bucket, cand)} />
-            <WeightStep
-              picks={picks}
-              equityOption={equityOption}
-              onEquityOption={(v) => { setEquityOption(v); setAlloc(null); }}
-              alloc={alloc}
-              allocLoading={allocLoading}
-              onRecalc={recalcAlloc}
-            />
-          </div>
-        );
       case 6:
-        return <ApprovalStep acknowledged={acknowledged} onAck={setAcknowledged} savedAt={draftSavedAt} />;
+        return (
+          <WeightStep
+            picks={picks}
+            equityOption={equityOption}
+            onEquityOption={(v) => { setEquityOption(v); setAlloc(null); }}
+            alloc={alloc}
+            allocLoading={allocLoading}
+            onRecalc={recalcAlloc}
+          />
+        );
       case 7:
-        return <SplitEntryStep accountId={accountId} picks={picks} plan={splitPlan} setPlan={setSplitPlan} equityOption={equityOption} />;
+        return <ApprovalStep acknowledged={acknowledged} onAck={setAcknowledged} savedAt={draftSavedAt} />;
       case 8:
+        return <SplitEntryStep accountId={accountId} picks={picks} plan={splitPlan} setPlan={setSplitPlan} equityOption={equityOption} />;
+      case 9:
         return <FinalCheckStep accountId={accountId} plan={splitPlan} acknowledged={acknowledged} picks={picks} alloc={alloc} equityOption={equityOption} />;
       default:
         return null;
@@ -2446,10 +2529,10 @@ export function SelectionFlow({ accountId }: { accountId: number }) {
       <Card>
         <CardHeader className="flex-row items-center justify-between">
           <CardTitle>{step + 1}. {STEPS[step]}</CardTitle>
-          {step <= 4 && <Badge className="bg-neutral-100 text-neutral-500">조회 · 비교 · 선택</Badge>}
-          {step === 5 && <Badge className="bg-neutral-100 text-neutral-500">draft 비중 (미반영)</Badge>}
-          {step === 6 && <Badge className="bg-warning/10 text-warning">초안 승인 (미반영)</Badge>}
-          {step >= 7 && <Badge className="bg-error/10 text-error">draft · 자동주문 없음</Badge>}
+          {step <= 5 && <Badge className="bg-neutral-100 text-neutral-500">조회 · 비교 · 선택</Badge>}
+          {step === 6 && <Badge className="bg-neutral-100 text-neutral-500">draft 비중 (미반영)</Badge>}
+          {step === 7 && <Badge className="bg-warning/10 text-warning">초안 승인 (미반영)</Badge>}
+          {step >= 8 && <Badge className="bg-error/10 text-error">draft · 자동주문 없음</Badge>}
         </CardHeader>
         <CardBody>{stepContent}</CardBody>
       </Card>

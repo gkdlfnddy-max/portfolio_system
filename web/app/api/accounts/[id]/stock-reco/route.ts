@@ -53,12 +53,14 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     const n = Math.max(1, Math.min(30, parseInt(url.searchParams.get("n") ?? "10", 10) || 10));
     const theme = (url.searchParams.get("theme") ?? "").trim();
     const sector = (url.searchParams.get("sector") ?? "").trim();
+    const bucket = (url.searchParams.get("bucket") ?? "").trim();
     const kind = ["stock", "etf", "all"].includes(url.searchParams.get("kind") ?? "") ? url.searchParams.get("kind")! : "all";
     const extra = (url.searchParams.get("extra") ?? "").trim();
 
     const args = ["--account", String(id), "--n", String(n), "--kind", kind];
     if (theme) args.push("--theme", theme);
     else if (sector) args.push("--sector", sector);
+    else if (bucket) args.push("--bucket", bucket);
     else if (extra) args.push("--extra", extra);
     const out = await runPy("stock_reco", args);
     return NextResponse.json({ ...out, readonly: true });

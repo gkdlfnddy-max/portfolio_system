@@ -125,3 +125,15 @@ def test_only_verified_seeded():
     finally:
         conn.close()
     assert bad == 0
+
+
+def test_by_bucket_and_recommend_bucket():
+    # bucket 후보(config seed → master) + 계좌 맞춤 추천(ETF 자동추천).
+    _set_account(40, risk="neutral", goal="growth")
+    etfs = im.by_bucket("global_core", kind="etf")
+    assert {e["ticker"] for e in etfs} == {"SPY", "VOO", "QQQ", "VT", "VTI"}
+    assert all(e["is_etf"] == 1 for e in etfs)
+    out = sr.recommend(40, bucket="robotics", kind="etf", n=5)
+    assert out["request_kind"] == "bucket" and out["request_key"] == "robotics"
+    assert {c["candidate_id"] for c in out["candidates"]} == {"BOTZ", "ROBO", "ARKQ"}
+    assert out["auto_order_created"] is False

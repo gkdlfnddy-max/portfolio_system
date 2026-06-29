@@ -170,6 +170,35 @@ def by_theme(theme: str, *, kind: str = "all", conn=None) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def by_bucket(bucket: str, *, kind: str = "all", conn=None) -> list[dict]:
+    """선정 위저드 bucket(global_core/robotics/semiconductor/...)의 후보 — config seed → master.
+
+    bucket 시드(config instruments 의 bucket 필드)에 속한 검증된 종목/ETF. kind: stock|etf|all.
+    """
+    seed = bucket_specs().get(bucket, {}).get("seed", [])
+    if not seed:
+        return []
+    own = conn is None
+    conn = conn or store_db.connect()
+    try:
+        out: list[dict] = []
+        for tk in seed:
+            r = conn.execute(
+                "SELECT ticker, market, name, asset_class, is_etf, is_inverse, is_leveraged "
+                "FROM instrument_master WHERE ticker=? AND verified=1", (tk,)).fetchone()
+            if not r:
+                continue
+            if kind == "stock" and r["is_etf"]:
+                continue
+            if kind == "etf" and not r["is_etf"]:
+                continue
+            out.append(dict(r))
+        return out
+    finally:
+        if own:
+            conn.close()
+
+
 def by_sector(sector: str, *, kind: str = "all", conn=None) -> list[dict]:
     own = conn is None
     conn = conn or store_db.connect()
