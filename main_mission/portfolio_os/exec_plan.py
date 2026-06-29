@@ -81,7 +81,9 @@ def build_split_plan(account_index: int, picks: dict, *, prices: dict, cash_krw:
         weight = float(h["weight_pct"])
         total_krw = cash_krw * weight / 100.0
         total_target += total_krw
-        mkt, ccy = markets.get(tk, ("KRX", "KRW"))
+        _m = markets.get(tk, ("KRX", "KRW"))
+        mkt, ccy = _m[0], _m[1]
+        exch = _m[2] if len(_m) > 2 else ""   # KIS 해외 거래소코드(NASD/NYSE/AMEX) — 미국 주문용
         is_foreign = ccy != "KRW"
         # 통화 환산: KRW=1.0(불변). fx_rates 제공됐는데 해당 통화 없으면 스킵(가짜 환산 금지).
         if is_foreign and fx_rates is not None and ccy not in fx_rates:
@@ -131,7 +133,7 @@ def build_split_plan(account_index: int, picks: dict, *, prices: dict, cash_krw:
                 "weight_pct": round(weight, 2),
                 "cycle_pct": round(cycle_krw / cash_krw * 100.0, 2),
                 "cycle_krw": round(cycle_krw), "fx_rate": (round(fx, 2) if is_foreign else None),
-                "bucket": h.get("bucket"), "shares_total": shares_total,
+                "bucket": h.get("bucket"), "shares_total": shares_total, "exchange": exch,
                 "on_unfilled": "no_chase",                    # 미체결이면 매수 안 함(추격·시장가 없음)
                 "client_order_id": f"exec-{account_index}-{tk}-r{r}{tok}",
             })
@@ -253,7 +255,7 @@ def main() -> int:
         mk = m.get("market")
         if mk:
             ccy = "KRW" if mk in ("KRX", "KOSPI", "KOSDAQ") else "USD"
-            markets[t] = (mk, ccy)
+            markets[t] = (mk, ccy, m.get("kis_exchange", ""))
 
     from datetime import datetime, timezone
     token = a.token or datetime.now(timezone.utc).strftime("%Y%m%d")
@@ -283,7 +285,8 @@ def execute_round(plan: dict, round_no: int, broker, account: Account, *,
         return {"ok": False, "reason": f"{round_no}회차 step 없음", "submitted": 0}
     results = []
     for s in steps:
-        inst = Instrument(s["ticker"], s["market"], s["currency"], "etf")
+        inst = Instrument(s["ticker"], s["market"], s["currency"], "etf",
+                          exchange=s.get("exchange", ""))   # 미국 주문 거래소코드(OVRS_EXCG_CD)
         req = OrderRequest(client_order_id=s["client_order_id"], instrument=inst, side="buy",
                            qty=Decimal(s["qty"]), order_type="limit",
                            limit_price=Decimal(s["limit_price"]))

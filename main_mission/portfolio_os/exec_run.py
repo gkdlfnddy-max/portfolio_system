@@ -66,7 +66,7 @@ def _load_plan(account_index: int, picks: dict, *, rounds: int, period: int,
         mk = m.get("market")
         if mk:
             ccy = "KRW" if mk in ("KRX", "KOSPI", "KOSDAQ") else "USD"
-            markets[t] = (mk, ccy)
+            markets[t] = (mk, ccy, m.get("kis_exchange", ""))
     tok = token or datetime.now(timezone.utc).strftime("%Y%m%d")
     # 외화(USD) 종목 환율은 실제 집행(CLI) 경로에서만 네트워크 조회(fetch_fx=True).
     #   테스트/직접호출(default)은 None=환산 비활성으로 순수 유지(오프라인).

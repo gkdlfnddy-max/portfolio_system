@@ -78,8 +78,9 @@ def bucket_specs() -> dict:
 
 
 def ticker_meta_map() -> dict:
-    """ticker → {name, market, asset_class} (config 단일 원본). 하드코딩 _TICKER_META 대체."""
-    return {i["ticker"]: {"name": i["name"], "market": i["market"], "asset_class": i["asset_class"]}
+    """ticker → {name, market, asset_class, kis_exchange} (config 단일 원본). 하드코딩 _TICKER_META 대체."""
+    return {i["ticker"]: {"name": i["name"], "market": i["market"], "asset_class": i["asset_class"],
+                          "kis_exchange": i.get("kis_exchange", "")}
             for i in load_config().get("instruments", [])}
 
 

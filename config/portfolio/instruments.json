@@ -36,7 +36,8 @@
       "bucket": "global_core",
       "sector": "광범위지수",
       "parent_sector": "지수",
-      "themes": []
+      "themes": [],
+      "kis_exchange": "AMEX"
     },
     {
       "ticker": "VOO",
@@ -46,7 +47,8 @@
       "bucket": "global_core",
       "sector": "광범위지수",
       "parent_sector": "지수",
-      "themes": []
+      "themes": [],
+      "kis_exchange": "AMEX"
     },
     {
       "ticker": "QQQ",
@@ -61,7 +63,8 @@
           "theme": "AI",
           "relation": "adjacent"
         }
-      ]
+      ],
+      "kis_exchange": "NASD"
     },
     {
       "ticker": "VT",
@@ -71,7 +74,8 @@
       "bucket": "global_core",
       "sector": "글로벌지수",
       "parent_sector": "지수",
-      "themes": []
+      "themes": [],
+      "kis_exchange": "AMEX"
     },
     {
       "ticker": "VTI",
@@ -81,7 +85,8 @@
       "bucket": "global_core",
       "sector": "미국전체",
       "parent_sector": "지수",
-      "themes": []
+      "themes": [],
+      "kis_exchange": "AMEX"
     },
     {
       "ticker": "005930",
@@ -228,7 +233,8 @@
           "theme": "AI",
           "relation": "core"
         }
-      ]
+      ],
+      "kis_exchange": "NASD"
     },
     {
       "ticker": "AMD",
@@ -247,7 +253,8 @@
           "theme": "AI",
           "relation": "adjacent"
         }
-      ]
+      ],
+      "kis_exchange": "NASD"
     },
     {
       "ticker": "AVGO",
@@ -266,7 +273,8 @@
           "theme": "AI",
           "relation": "adjacent"
         }
-      ]
+      ],
+      "kis_exchange": "NASD"
     },
     {
       "ticker": "TSM",
@@ -281,7 +289,8 @@
           "theme": "반도체",
           "relation": "core"
         }
-      ]
+      ],
+      "kis_exchange": "NYSE"
     },
     {
       "ticker": "ASML",
@@ -296,7 +305,8 @@
           "theme": "반도체",
           "relation": "core"
         }
-      ]
+      ],
+      "kis_exchange": "NASD"
     },
     {
       "ticker": "MU",
@@ -311,7 +321,8 @@
           "theme": "반도체",
           "relation": "core"
         }
-      ]
+      ],
+      "kis_exchange": "NASD"
     },
     {
       "ticker": "SOXX",
@@ -326,7 +337,8 @@
           "theme": "반도체",
           "relation": "core"
         }
-      ]
+      ],
+      "kis_exchange": "NASD"
     },
     {
       "ticker": "SMH",
@@ -341,7 +353,8 @@
           "theme": "반도체",
           "relation": "core"
         }
-      ]
+      ],
+      "kis_exchange": "NASD"
     },
     {
       "ticker": "SOXS",
@@ -356,7 +369,8 @@
           "theme": "반도체",
           "relation": "hedge"
         }
-      ]
+      ],
+      "kis_exchange": "AMEX"
     },
     {
       "ticker": "373220",
@@ -461,7 +475,8 @@
           "theme": "2차전지",
           "relation": "core"
         }
-      ]
+      ],
+      "kis_exchange": "AMEX"
     },
     {
       "ticker": "207940",
@@ -536,7 +551,8 @@
           "theme": "바이오",
           "relation": "core"
         }
-      ]
+      ],
+      "kis_exchange": "NYSE"
     },
     {
       "ticker": "NVO",
@@ -551,7 +567,8 @@
           "theme": "바이오",
           "relation": "core"
         }
-      ]
+      ],
+      "kis_exchange": "NYSE"
     },
     {
       "ticker": "XBI",
@@ -566,7 +583,8 @@
           "theme": "바이오",
           "relation": "core"
         }
-      ]
+      ],
+      "kis_exchange": "AMEX"
     },
     {
       "ticker": "IBB",
@@ -581,7 +599,8 @@
           "theme": "바이오",
           "relation": "core"
         }
-      ]
+      ],
+      "kis_exchange": "NASD"
     },
     {
       "ticker": "454910",
@@ -641,7 +660,8 @@
           "theme": "로봇",
           "relation": "core"
         }
-      ]
+      ],
+      "kis_exchange": "NASD"
     },
     {
       "ticker": "BOTZ",
@@ -660,7 +680,8 @@
           "theme": "AI",
           "relation": "adjacent"
         }
-      ]
+      ],
+      "kis_exchange": "NASD"
     },
     {
       "ticker": "ROBO",
@@ -675,7 +696,8 @@
           "theme": "로봇",
           "relation": "core"
         }
-      ]
+      ],
+      "kis_exchange": "AMEX"
     },
     {
       "ticker": "ARKQ",
@@ -694,7 +716,8 @@
           "theme": "AI",
           "relation": "adjacent"
         }
-      ]
+      ],
+      "kis_exchange": "AMEX"
     },
     {
       "ticker": "035420",
@@ -739,7 +762,8 @@
           "theme": "AI",
           "relation": "core"
         }
-      ]
+      ],
+      "kis_exchange": "NASD"
     },
     {
       "ticker": "GOOGL",
@@ -754,7 +778,8 @@
           "theme": "AI",
           "relation": "core"
         }
-      ]
+      ],
+      "kis_exchange": "NASD"
     },
     {
       "ticker": "PLTR",
@@ -769,7 +794,8 @@
           "theme": "AI",
           "relation": "core"
         }
-      ]
+      ],
+      "kis_exchange": "NASD"
     },
     {
       "ticker": "012450",
@@ -844,7 +870,8 @@
           "theme": "방산",
           "relation": "core"
         }
-      ]
+      ],
+      "kis_exchange": "NYSE"
     },
     {
       "ticker": "ITA",
@@ -859,7 +886,8 @@
           "theme": "방산",
           "relation": "core"
         }
-      ]
+      ],
+      "kis_exchange": "AMEX"
     },
     {
       "ticker": "009540",
@@ -1010,7 +1038,8 @@
           "theme": "금융",
           "relation": "core"
         }
-      ]
+      ],
+      "kis_exchange": "NYSE"
     },
     {
       "ticker": "XLF",
@@ -1025,7 +1054,8 @@
           "theme": "금융",
           "relation": "core"
         }
-      ]
+      ],
+      "kis_exchange": "AMEX"
     },
     {
       "ticker": "SCHD",
@@ -1040,7 +1070,8 @@
           "theme": "배당",
           "relation": "core"
         }
-      ]
+      ],
+      "kis_exchange": "NASD"
     },
     {
       "ticker": "VYM",
@@ -1055,7 +1086,8 @@
           "theme": "배당",
           "relation": "core"
         }
-      ]
+      ],
+      "kis_exchange": "AMEX"
     },
     {
       "ticker": "JEPI",
@@ -1070,7 +1102,9 @@
           "theme": "배당",
           "relation": "core"
         }
-      ]
+      ],
+      "kis_exchange": "AMEX"
     }
-  ]
+  ],
+  "_doc_kis_exchange": "kis_exchange = KIS 해외주문 거래소코드(NASD/NYSE/AMEX). ⚠️ best-effort — 실주문 전 KIS/거래소 확인 권장."
 }

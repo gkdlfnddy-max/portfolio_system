@@ -25,11 +25,12 @@ class Account:
 @dataclass(frozen=True)
 class Instrument:
     ticker: str
-    market: str          # KRX | NASDAQ | NYSE | AMEX
+    market: str          # KRX | US | NASDAQ | NYSE | AMEX
     currency: str        # KRW | USD
     asset_class: str = "stock"
     is_leveraged: bool = False
     is_inverse: bool = False
+    exchange: str = ""   # KIS 해외 거래소 코드(NASD/NYSE/AMEX) — 미국 주문 OVRS_EXCG_CD 용
 
 
 @dataclass(frozen=True)

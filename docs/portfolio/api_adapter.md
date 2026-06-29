@@ -61,7 +61,7 @@ class BrokerPort(Protocol):
 | 미국 현재가 | `/uapi/overseas-price/v1/quotations/price` | HHDFS00000300 | 거래소 코드 필요 |
 | 환율 | (해외주문 응답 내 환율 or 별도) | — | 없으면 외부 환율 소스 + flag |
 | 국내 주문 | `/uapi/domestic-stock/v1/trading/order-cash` | 매수 TTTC0802U / 매도 TTTC0801U(실), V-prefix(모의) | ✅실전 코드 검증 / 모의 코드 미검증 · hashkey 서명 |
-| 미국 주문 | `/uapi/overseas-stock/v1/trading/order` | ⚠️ TTTT1002U vs **JTTT1002U** 출처 엇갈림 | **미검증** — 거래소(NASD/NYSE/AMEX)·매수매도·정정취소별 코드 전수 확인 필요 |
+| 미국 주문 | `/uapi/overseas-stock/v1/trading/order` | TTTT1002U(매수)/TTTT1006U(매도) — ⚠️**미검증** | **배선 완료**(kis_adapter._place_overseas: OVRS_EXCG_CD=NASD/NYSE/AMEX, 지정가 ORD_DVSN=00). tr_id 는 KIS 공식 재검증 또는 소액 1주 테스트 필요. 정정취소는 범위 외 |
 | 체결 조회 | `inquire-ccnl` 류 + **WebSocket 실시간 체결통보 H0STCNI0(실)/H0STCNI9(모)** | | 미체결/부분 추적은 push 권장 (Wave1 §7) |
 
 > 위 코드값은 **구현 단계에서 KIS 공식 문서로 검증 후 selector_registry 처럼 한 곳에 고정**한다. 임의 추측 금지(§9 출처). Wave 1 검증 결과는 아래 §7.

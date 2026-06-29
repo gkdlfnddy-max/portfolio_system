@@ -77,10 +77,28 @@ TRID_DOMESTIC_ORDER = {
     ("paper", "sell"): "VTTC0801U",
 }
 
-# --- 미국주식 (⚠️ tr_id 출처 엇갈림 — 구현 전 전수 검증 필요, api_adapter.md §3) ---
+# --- 미국주식 (해외) ---
 PATH_OVERSEAS_BALANCE = "/uapi/overseas-stock/v1/trading/inquire-balance"
 PATH_OVERSEAS_PRICE = "/uapi/overseas-price/v1/quotations/price"
 PATH_OVERSEAS_ORDER = "/uapi/overseas-stock/v1/trading/order"
+
+# 미국 주문 tr_id (mode, side) → tr_id.
+#   ⚠️⚠️ 미검증 — KIS 개발자센터 공식 문서로 **전수 재검증 필요**(출처 엇갈림: TTTT1002U vs JTTT1002U).
+#   실주문 전 반드시 확인하거나 소액 1주 테스트로 검증할 것. 잘못된 코드면 KIS 가 거부(rt_cd≠0).
+TRID_OVERSEAS_ORDER = {
+    ("live", "buy"): "TTTT1002U",    # 미국 매수(실전) — ⚠️ 미검증
+    ("live", "sell"): "TTTT1006U",   # 미국 매도(실전) — ⚠️ 미검증
+    ("paper", "buy"): "VTTT1002U",   # 미국 매수(모의) — ⚠️ 미검증
+    ("paper", "sell"): "VTTT1001U",  # 미국 매도(모의) — ⚠️ 미검증
+}
+
+# 우리 market/거래소 라벨 → KIS 해외 거래소 코드(OVRS_EXCG_CD).
+#   NASD=나스닥, NYSE=뉴욕, AMEX=NYSE Arca/American 등. "US"(미상)는 매핑 없음 → 주문측에서 거부.
+_KIS_US_EXCH = {
+    "NASDAQ": "NASD", "NASD": "NASD",
+    "NYSE": "NYSE",
+    "AMEX": "AMEX", "ARCA": "AMEX", "NYSEARCA": "AMEX", "PCX": "AMEX", "BATS": "AMEX", "BATSGLOBAL": "AMEX",
+}
 
 
 def base_url(mode: Mode) -> str:
@@ -93,3 +111,12 @@ def domestic_balance_trid(mode: Mode) -> str:
 
 def domestic_order_trid(mode: Mode, side: str) -> str:
     return TRID_DOMESTIC_ORDER[(mode, side)]
+
+
+def overseas_order_trid(mode: Mode, side: str) -> str:
+    return TRID_OVERSEAS_ORDER[(mode, side)]
+
+
+def kis_overseas_exchange(market: str) -> str:
+    """우리 market/거래소 라벨 → KIS OVRS_EXCG_CD(NASD/NYSE/AMEX). 미상이면 빈 문자열."""
+    return _KIS_US_EXCH.get((market or "").upper().replace(" ", ""), "")

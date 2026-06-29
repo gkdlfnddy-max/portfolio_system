@@ -184,13 +184,26 @@ class _KisAdapterBase:
         # TODO: 체결 조회 / WebSocket 체결통보 (api_adapter.md §7.3). 1차 범위 외.
         return []
 
+    @staticmethod
+    def _is_overseas(inst) -> bool:
+        """미국(해외) 주문 여부 — 통화 USD 또는 market 이 KRX 류가 아니면 해외."""
+        return (inst.currency or "").upper() == "USD" or (inst.market or "").upper() not in ("KRX", "KOSPI", "KOSDAQ")
+
     # --- 주문 (write) — 승인된 후보만 ----------------------------------
     def place_order(self, account: Account, req: OrderRequest) -> OrderAck:
         if not self.client.is_healthy:
             return OrderAck(req.client_order_id, None, False, "broker unhealthy (A3)")
         if req.client_order_id in self._seen_client_ids:
             return OrderAck(req.client_order_id, None, False, "duplicate client_order_id (A4)")
+        # 시장가 매수 영구 금지(§16) — 국내/해외 공통.
+        if req.order_type == "market" and req.side == "buy":
+            return OrderAck(req.client_order_id, None, False, "시장가 매수 금지(§16) — 지정가만")
 
+        if self._is_overseas(req.instrument):
+            return self._place_overseas(req)
+        return self._place_domestic(req)
+
+    def _place_domestic(self, req: OrderRequest) -> OrderAck:
         ord_dvsn = "01" if req.order_type == "market" else "00"  # 01=시장가 00=지정가
         unpr = "0" if req.order_type == "market" else str(req.limit_price or 0)
         body = {
@@ -208,7 +221,36 @@ class _KisAdapterBase:
         except Exception as exc:
             # 전송 불확실 → 재전송 금지. 상태는 get_open_orders 로 확인 (§5).
             return OrderAck(req.client_order_id, None, False, f"전송 오류(상태 재조회 필요): {exc}")
+        ok = resp.get("rt_cd") == "0"
+        if ok:
+            self._seen_client_ids.add(req.client_order_id)
+        broker_id = (resp.get("output", {}) or {}).get("ODNO")
+        return OrderAck(req.client_order_id, broker_id, ok, resp.get("msg1"))
 
+    def _place_overseas(self, req: OrderRequest) -> OrderAck:
+        """미국(해외) **지정가** 주문. ⚠️ tr_id 미검증 — 실주문 전 KIS 공식 코드 확인 필수."""
+        excg = (req.instrument.exchange or "").strip().upper() or ep.kis_overseas_exchange(req.instrument.market)
+        if not excg:
+            return OrderAck(req.client_order_id, None, False,
+                            f"미국 거래소코드 미상('{req.instrument.market}') — NASD/NYSE/AMEX 확인 필요(주문 보류)")
+        if req.order_type == "market":  # 해외는 지정가만
+            return OrderAck(req.client_order_id, None, False, "미국 주문은 지정가만 — 시장가 불가(§16)")
+        body = {
+            "CANO": self.client.account_no,
+            "ACNT_PRDT_CD": self.client.account_prod,
+            "OVRS_EXCG_CD": excg,                        # NASD|NYSE|AMEX
+            "PDNO": req.instrument.ticker,
+            "ORD_QTY": str(int(req.qty)),
+            "OVRS_ORD_UNPR": str(req.limit_price or 0),   # 지정가(USD, 소수 호가 허용)
+            "ORD_SVR_DVSN_CD": "0",
+            "ORD_DVSN": "00",                            # 00=지정가
+        }
+        tr_id = ep.overseas_order_trid(self._mode, req.side)
+        try:
+            h = self.client.hashkey(body)
+            resp = self.client.post(ep.PATH_OVERSEAS_ORDER, tr_id, body, hashkey=h)
+        except Exception as exc:
+            return OrderAck(req.client_order_id, None, False, f"전송 오류(상태 재조회 필요): {exc}")
         ok = resp.get("rt_cd") == "0"
         if ok:
             self._seen_client_ids.add(req.client_order_id)
