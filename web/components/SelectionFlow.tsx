@@ -1823,6 +1823,25 @@ function SplitEntryStep({ accountId, picks, plan, setPlan }: {
   const [period, setPeriod] = useState(14);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // 가격(일봉) 적재 — 분할 지정가 계산의 전제. KRX 만 적재 가능, 해외는 미연동(graceful).
+  const [priceLoading, setPriceLoading] = useState(false);
+  const [priceResult, setPriceResult] = useState<any>(null);
+
+  const loadPrices = useCallback(async () => {
+    setPriceLoading(true); setPriceResult(null); setErr(null);
+    try {
+      const tickers = Array.from(new Set(picks.map((p) => p.ticker).filter(Boolean)));
+      const res = await fetch(`/api/accounts/${accountId}/prices/sync`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tickers }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setErr(data?.error || "가격 적재 실패"); }
+      setPriceResult(data);
+    } catch (e: any) {
+      setErr(e?.message || "가격 적재 오류");
+    } finally { setPriceLoading(false); }
+  }, [accountId, picks]);
 
   const generate = useCallback(async () => {
     setLoading(true); setErr(null);
@@ -1851,7 +1870,40 @@ function SplitEntryStep({ accountId, picks, plan, setPlan }: {
         "무릎" 지점의 <b>저점 지정가 사다리</b>(회차가 깊을수록 더 낮은 가)를 알아서 만듭니다.
         <b> 걸리면 체결, 미체결이면 매수하지 않습니다</b>(추격 없음). 결과는 <b>초안(draft)</b>이며 주문을 생성하지 않습니다.
       </p>
+      {/* 1) 가격 적재 — 분할 지정가는 일봉 가격이 있어야 계산된다. 없으면 정직하게 0건. */}
+      <div className="rounded-lg border border-sky-200 bg-sky-50/40 p-2.5 space-y-1.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium text-sky-700">① 가격 데이터 적재(전제)</span>
+          <Button size="sm" variant="outline" onClick={loadPrices} disabled={priceLoading || picks.length === 0}>
+            {priceLoading ? "적재 중…" : "국내(KRX) 가격 적재"}
+          </Button>
+        </div>
+        <p className="text-[11px] text-neutral-500">
+          분할 지정가는 일봉(현재가)이 있어야 만들어집니다. <b>KRX 종목만</b> 적재되고, 미국 ETF 등 해외는
+          아직 가격 소스가 없어 <b>미연동</b>으로 남습니다(가짜 가격 미생성). read-only — 주문 아님.
+        </p>
+        {priceResult && (
+          <p className="text-[11px]">
+            <span className="text-success">적재 {priceResult.loaded ?? 0}/{priceResult.total ?? 0}종</span>
+            {Array.isArray(priceResult.results) && (
+              <span className="text-neutral-500">
+                {" — "}
+                {priceResult.results.filter((r: any) => r.ok).map((r: any) => r.code).join(", ") || "성공 없음"}
+                {priceResult.results.some((r: any) => !r.ok) && (
+                  <span className="text-neutral-400">
+                    {" · 미연동: "}
+                    {priceResult.results.filter((r: any) => !r.ok).map((r: any) => r.code).join(", ")}
+                  </span>
+                )}
+              </span>
+            )}
+          </p>
+        )}
+      </div>
+
+      {/* 2) 분할 생성 — 적재된 가격으로 저점 지정가 사다리. */}
       <div className="flex flex-wrap items-end gap-3">
+        <span className="text-xs font-medium text-neutral-600 w-full">② 분할 저점 지정가 생성</span>
         <label className="text-xs text-neutral-500">분할 횟수
           <Input className="mt-1 w-20" type="number" min={1} max={10} value={rounds}
                  onChange={(e) => setRounds(Math.max(1, Math.min(10, Number(e.target.value) || 1)))} />
@@ -1897,7 +1949,8 @@ function SplitEntryStep({ accountId, picks, plan, setPlan }: {
       )}
       {plan && steps.length === 0 && (
         <p className="text-[11px] text-neutral-500">
-          생성된 회차가 없습니다 — 회차 예산이 1주 가격보다 작거나(고가주) 현재가 미연동입니다(정직). 횟수를 줄여 보세요.
+          생성된 회차가 없습니다 — 원인: <b>①가격 미연동</b>(위 "가격 적재" 먼저) 또는 <b>②회차 예산 &lt; 1주</b>(고가주).
+          ②는 <b>분할 횟수를 줄이거나</b>(예: 1회), <b>종목 수를 줄이면</b> 회차 예산이 커져 매수 가능해집니다.
         </p>
       )}
       {plan?.skipped?.length > 0 && (
@@ -1915,12 +1968,36 @@ function SplitEntryStep({ accountId, picks, plan, setPlan }: {
   );
 }
 
-// ── Step 8: 주문 전 최종 확인 (live hard lock) ──
-function FinalCheckStep({ plan, acknowledged, picks, alloc }: { plan: any; acknowledged: boolean; picks: Pick[]; alloc: AllocSection | null }) {
+// ── Step 8: 주문 전 최종 확인 + 집행(paper 우선, live 잠금) ──
+function FinalCheckStep({ accountId, plan, acknowledged, picks, alloc }: { accountId: number; plan: any; acknowledged: boolean; picks: Pick[]; alloc: AllocSection | null }) {
   const filled: any[] = plan?.steps ?? [];
   const draft: any[] = (alloc?.ready && alloc.data)
     ? (alloc.data.holdings ?? alloc.data.draft_weights ?? alloc.data.allocations ?? []).filter((h: any) => Number(h.weight_pct ?? h.weight ?? 0) > 0)
     : [];
+
+  // 집행(예약 지정가 제출) — paper 우선. 승인 체크 + 회차 존재 시에만 활성. live 는 잠금.
+  const [strategyApproved, setStrategyApproved] = useState(false);
+  const [execLoading, setExecLoading] = useState(false);
+  const [execResult, setExecResult] = useState<any>(null);
+  const canExecute = acknowledged && filled.length > 0 && strategyApproved;
+
+  const execute = useCallback(async (mode: "mock" | "paper") => {
+    setExecLoading(true); setExecResult(null);
+    try {
+      const res = await fetch(`/api/accounts/${accountId}/execute`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode, approve: true,
+          rounds: plan?.rounds, period_days: plan?.period_days,
+          picks: picks.map((p) => ({ bucket: p.bucket, ticker: p.ticker })),
+        }),
+      });
+      setExecResult(await res.json());
+    } catch (e: any) {
+      setExecResult({ ok: false, error: e?.message ?? "집행 오류" });
+    } finally { setExecLoading(false); }
+  }, [accountId, plan, picks]);
+
   return (
     <div className="space-y-4">
       <div className="rounded-lg bg-error/5 border border-error/30 p-3 text-sm text-error flex items-start gap-2">
@@ -1956,6 +2033,43 @@ function FinalCheckStep({ plan, acknowledged, picks, alloc }: { plan: any; ackno
       <p className="text-xs text-neutral-400">
         위 내용은 <b>저장된 초안</b>이며 주문이 아닙니다. 무승인 자동매매는 금지되어 있습니다.
       </p>
+
+      {/* 집행 패널 — paper 우선. 모든 게이트(승인·회차) 충족 시에만 활성. live 는 별도 잠금. */}
+      <div className="rounded-lg border border-neutral-300 p-3 space-y-2">
+        <div className="font-medium text-neutral-700 text-sm">집행 (예약 지정가 제출)</div>
+        {filled.length === 0 && (
+          <p className="text-[11px] text-warning">집행할 회차가 없습니다 — 8단계에서 가격 적재 후 분할계획을 먼저 생성하세요.</p>
+        )}
+        {!acknowledged && (
+          <p className="text-[11px] text-warning">7단계에서 초안 승인을 먼저 표시하세요.</p>
+        )}
+        <label className="flex items-start gap-2 text-xs text-neutral-600">
+          <input type="checkbox" className="mt-0.5" checked={strategyApproved}
+                 onChange={(e) => setStrategyApproved(e.target.checked)} />
+          <span>이 전략(분할 지정가 {filled.length}건)을 <b>사장님 권한으로 승인</b>합니다. 승인 1회 → 예약 지정가 일괄 제출(걸리면 체결·미체결=미매수).</span>
+        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="outline" disabled={!canExecute || execLoading} onClick={() => execute("mock")}>
+            {execLoading ? "처리 중…" : "시뮬레이션(mock) 집행"}
+          </Button>
+          <Button size="sm" disabled={!canExecute || execLoading} onClick={() => execute("paper")}>
+            모의투자(paper) 집행
+          </Button>
+          <span className="inline-flex items-center gap-1 text-[11px] text-error">
+            <Lock className="w-3 h-3" /> 실전(live) 집행 잠금 — 서버 KIS_LIVE_CONFIRM + CEO 체크리스트 필요(§15)
+          </span>
+        </div>
+        <p className="text-[11px] text-neutral-400">
+          집행은 항상 <b>지정가</b>(시장가 매수 영구 금지)이며, 1주문 한도·세션 주문수 등 리스크 게이트가 제출 시점에 hard-block 으로 재검증됩니다.
+        </p>
+        {execResult && (
+          <div className={`rounded-md p-2 text-[11px] ${execResult.ok ? "bg-success/5 text-success" : "bg-error/5 text-error"}`}>
+            {execResult.ok
+              ? <>✓ 제출 {execResult.submitted}건 / {execResult.plan_steps}건 (mode={execResult.mode}). 미체결분은 매수되지 않습니다(추격 없음).</>
+              : <>집행 거부 — {execResult.stage ? `[${execResult.stage}] ` : ""}{execResult.error ?? "실패"}{Array.isArray(execResult.over_limit_warnings) && execResult.over_limit_warnings.length > 0 ? ` (${execResult.over_limit_warnings.length}건 한도초과)` : ""}</>}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -2165,7 +2279,7 @@ export function SelectionFlow({ accountId }: { accountId: number }) {
       case 7:
         return <SplitEntryStep accountId={accountId} picks={picks} plan={splitPlan} setPlan={setSplitPlan} />;
       case 8:
-        return <FinalCheckStep plan={splitPlan} acknowledged={acknowledged} picks={picks} alloc={alloc} />;
+        return <FinalCheckStep accountId={accountId} plan={splitPlan} acknowledged={acknowledged} picks={picks} alloc={alloc} />;
       default:
         return null;
     }
