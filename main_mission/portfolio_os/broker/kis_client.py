@@ -69,16 +69,23 @@ class KisHttpClient:
             pre = f"KIS_ACCOUNT_{account_index}_"
             acct_mode = os.getenv(pre + "MODE", "").strip().lower()
             self.mode = (mode or acct_mode or os.getenv("KIS_MODE", "paper")).strip().lower()  # type: ignore
-            self.app_key = os.getenv(pre + "APP_KEY", "").strip()
-            self.app_secret = os.getenv(pre + "APP_SECRET", "").strip()
-            self.account_no = os.getenv(pre + "ACCOUNT_NO", "").strip()
-            self.account_prod = os.getenv(pre + "PRODUCT_CODE", "01").strip()
+            # paper 모드는 **KIS 모의투자 전용 앱키**(실전 키는 모의 도메인에서 인증 안 됨).
+            #   KIS_ACCOUNT_{n}_PAPER_* 가 있으면 우선, 없으면 기본 자격증명으로 폴백
+            #   (계좌가 네이티브 paper 면 기본 키가 곧 paper 키).
+            kpre = pre + "PAPER_" if (self.mode == "paper" and os.getenv(pre + "PAPER_APP_KEY", "").strip()) else pre
+            self.app_key = os.getenv(kpre + "APP_KEY", "").strip()
+            self.app_secret = os.getenv(kpre + "APP_SECRET", "").strip()
+            self.account_no = os.getenv(kpre + "ACCOUNT_NO", "").strip()
+            self.account_prod = os.getenv(kpre + "PRODUCT_CODE", "01").strip()
+            self.cred_prefix = kpre
         else:
             self.mode = (mode or os.getenv("KIS_MODE", "paper")).strip().lower()  # type: ignore
-            self.app_key = os.getenv("KIS_APP_KEY", "").strip()
-            self.app_secret = os.getenv("KIS_APP_SECRET", "").strip()
-            self.account_no = os.getenv("KIS_ACCOUNT_NO", "").strip()
-            self.account_prod = os.getenv("KIS_ACCOUNT_PRODUCT_CODE", "01").strip()
+            kpre = "KIS_PAPER_" if (self.mode == "paper" and os.getenv("KIS_PAPER_APP_KEY", "").strip()) else "KIS_"
+            self.app_key = os.getenv(kpre + "APP_KEY", "").strip()
+            self.app_secret = os.getenv(kpre + "APP_SECRET", "").strip()
+            self.account_no = os.getenv(kpre + "ACCOUNT_NO", "").strip()
+            self.account_prod = os.getenv(kpre + "ACCOUNT_PRODUCT_CODE", "01").strip()
+            self.cred_prefix = kpre
 
         if self.mode not in ("paper", "live"):
             raise KisConfigError(f"mode 는 paper|live — got {self.mode!r}")

@@ -58,20 +58,30 @@ def _check(client: KisHttpClient, label: str) -> bool:
     return True
 
 
-def main() -> int:
-    print("=== KIS 연결 테스트 ===")
+def main(argv: list[str] | None = None) -> int:
+    import argparse
+    ap = argparse.ArgumentParser(description="KIS 연결 테스트(읽기 전용 — 주문 없음)")
+    ap.add_argument("--mode", choices=["paper", "live"],
+                    help="모드 강제(계좌 설정 무시). paper 검증 시 --mode paper (PAPER_ 자격증명 사용)")
+    ap.add_argument("--account", type=int, help="특정 계좌 index 만 검증")
+    a = ap.parse_args(argv)
+
+    print("=== KIS 연결 테스트 ===" + (f" (강제 mode={a.mode})" if a.mode else ""))
     _load_env()
     indices = _discover_account_indices()
+    if a.account is not None:
+        indices = [a.account]  # 명시 계좌만(미발견이어도 시도 → 명확 오류)
 
     if indices:
-        print(f"연결된 계좌 {len(indices)}건 발견 → 각 계좌 검증")
+        print(f"검증 대상 계좌 {len(indices)}건 → 각 계좌 검증")
         ok = 0
         for n in indices:
             alias = os.getenv(f"KIS_ACCOUNT_{n}_ALIAS", f"계좌 {n}")
             acct_mode = (os.getenv(f"KIS_ACCOUNT_{n}_MODE", "paper")).strip().lower()
-            test_mode = "live" if acct_mode == "live" else "paper"
+            test_mode = a.mode or ("live" if acct_mode == "live" else "paper")
             try:
-                client = KisHttpClient(test_mode, account_index=n)
+                client = KisHttpClient(test_mode, account_index=n)  # type: ignore[arg-type]
+                print(f"  ({alias}: 자격증명 prefix={getattr(client,'cred_prefix','?')})")
             except KisConfigError as e:
                 print(f"\n[{alias}] 설정 오류: {e}")
                 continue
@@ -82,7 +92,7 @@ def main() -> int:
 
     # primary 단일
     env_mode = os.getenv("KIS_MODE", "paper").strip().lower()
-    test_mode = "live" if env_mode == "live" else "paper"
+    test_mode = a.mode or ("live" if env_mode == "live" else "paper")
     if env_mode not in ("paper", "live"):
         print(f"   (KIS_MODE={env_mode!r} → paper 기준 점검. 계좌는 웹 /accounts/new 에서 추가)")
     try:
