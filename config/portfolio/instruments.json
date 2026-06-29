@@ -1,0 +1,1076 @@
+{
+  "_doc": "종목/ETF 공통 지식 단일 원본(설정 파일). 코드 하드코딩 금지 — 여기만 수정하면 master DB·bucket·테마/섹터가 모두 갱신된다. KRX 는 DART corp_map 검증된 것만 적재됨.",
+  "buckets": {
+    "global_core": {
+      "label": "글로벌 코어 ETF",
+      "kind": "etf",
+      "note": "광범위 시장 노출(코어). 후보 간 차이는 구성/비용/지역 노출에서 비교한다."
+    },
+    "robotics": {
+      "label": "로봇/자동화",
+      "kind": "etf",
+      "note": "로봇·자동화 테마 ETF. 구성 겹침·집중도를 비교한다."
+    },
+    "semiconductor": {
+      "label": "반도체",
+      "kind": "mixed",
+      "note": "반도체 ETF + 개별 대표주."
+    },
+    "semiconductor_inverse": {
+      "label": "반도체 인버스(헤지)",
+      "kind": "inverse",
+      "note": "헤지 전용 bucket. 인버스는 hedge bucket 한정."
+    },
+    "treasury": {
+      "label": "국채(방어)",
+      "kind": "bond",
+      "note": "국채는 방어(현금의 일부). 후보 시드는 bond_bucket 에서 가져온다."
+    }
+  },
+  "instruments": [
+    {
+      "ticker": "SPY",
+      "market": "US",
+      "name": "SPDR S&P 500 ETF",
+      "asset_class": "equity_etf",
+      "bucket": "global_core",
+      "sector": "광범위지수",
+      "parent_sector": "지수",
+      "themes": []
+    },
+    {
+      "ticker": "VOO",
+      "market": "US",
+      "name": "Vanguard S&P 500 ETF",
+      "asset_class": "equity_etf",
+      "bucket": "global_core",
+      "sector": "광범위지수",
+      "parent_sector": "지수",
+      "themes": []
+    },
+    {
+      "ticker": "QQQ",
+      "market": "US",
+      "name": "Invesco QQQ (Nasdaq-100)",
+      "asset_class": "equity_etf",
+      "bucket": "global_core",
+      "sector": "기술지수",
+      "parent_sector": "지수",
+      "themes": [
+        {
+          "theme": "AI",
+          "relation": "adjacent"
+        }
+      ]
+    },
+    {
+      "ticker": "VT",
+      "market": "US",
+      "name": "Vanguard Total World Stock ETF",
+      "asset_class": "equity_etf",
+      "bucket": "global_core",
+      "sector": "글로벌지수",
+      "parent_sector": "지수",
+      "themes": []
+    },
+    {
+      "ticker": "VTI",
+      "market": "US",
+      "name": "Vanguard Total US Stock Market ETF",
+      "asset_class": "equity_etf",
+      "bucket": "global_core",
+      "sector": "미국전체",
+      "parent_sector": "지수",
+      "themes": []
+    },
+    {
+      "ticker": "005930",
+      "market": "KRX",
+      "name": "삼성전자",
+      "asset_class": "stock",
+      "bucket": "semiconductor",
+      "sector": "반도체",
+      "parent_sector": "IT",
+      "themes": [
+        {
+          "theme": "반도체",
+          "relation": "core"
+        },
+        {
+          "theme": "AI",
+          "relation": "adjacent"
+        }
+      ]
+    },
+    {
+      "ticker": "000660",
+      "market": "KRX",
+      "name": "SK하이닉스",
+      "asset_class": "stock",
+      "bucket": "semiconductor",
+      "sector": "반도체",
+      "parent_sector": "IT",
+      "themes": [
+        {
+          "theme": "반도체",
+          "relation": "core"
+        },
+        {
+          "theme": "AI",
+          "relation": "adjacent"
+        }
+      ]
+    },
+    {
+      "ticker": "042700",
+      "market": "KRX",
+      "name": "한미반도체",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "반도체장비",
+      "parent_sector": "IT",
+      "themes": [
+        {
+          "theme": "반도체",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "240810",
+      "market": "KRX",
+      "name": "원익IPS",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "반도체장비",
+      "parent_sector": "IT",
+      "themes": [
+        {
+          "theme": "반도체",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "058470",
+      "market": "KRX",
+      "name": "리노공업",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "반도체부품",
+      "parent_sector": "IT",
+      "themes": [
+        {
+          "theme": "반도체",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "039030",
+      "market": "KRX",
+      "name": "이오테크닉스",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "반도체장비",
+      "parent_sector": "IT",
+      "themes": [
+        {
+          "theme": "반도체",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "000990",
+      "market": "KRX",
+      "name": "DB하이텍",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "반도체",
+      "parent_sector": "IT",
+      "themes": [
+        {
+          "theme": "반도체",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "036930",
+      "market": "KRX",
+      "name": "주성엔지니어링",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "반도체장비",
+      "parent_sector": "IT",
+      "themes": [
+        {
+          "theme": "반도체",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "NVDA",
+      "market": "US",
+      "name": "NVIDIA",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "반도체",
+      "parent_sector": "IT",
+      "themes": [
+        {
+          "theme": "반도체",
+          "relation": "core"
+        },
+        {
+          "theme": "AI",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "AMD",
+      "market": "US",
+      "name": "Advanced Micro Devices",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "반도체",
+      "parent_sector": "IT",
+      "themes": [
+        {
+          "theme": "반도체",
+          "relation": "core"
+        },
+        {
+          "theme": "AI",
+          "relation": "adjacent"
+        }
+      ]
+    },
+    {
+      "ticker": "AVGO",
+      "market": "US",
+      "name": "Broadcom",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "반도체",
+      "parent_sector": "IT",
+      "themes": [
+        {
+          "theme": "반도체",
+          "relation": "core"
+        },
+        {
+          "theme": "AI",
+          "relation": "adjacent"
+        }
+      ]
+    },
+    {
+      "ticker": "TSM",
+      "market": "US",
+      "name": "Taiwan Semiconductor",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "파운드리",
+      "parent_sector": "IT",
+      "themes": [
+        {
+          "theme": "반도체",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "ASML",
+      "market": "US",
+      "name": "ASML Holding",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "반도체장비",
+      "parent_sector": "IT",
+      "themes": [
+        {
+          "theme": "반도체",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "MU",
+      "market": "US",
+      "name": "Micron Technology",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "메모리",
+      "parent_sector": "IT",
+      "themes": [
+        {
+          "theme": "반도체",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "SOXX",
+      "market": "US",
+      "name": "iShares Semiconductor ETF",
+      "asset_class": "equity_etf",
+      "bucket": "semiconductor",
+      "sector": "반도체",
+      "parent_sector": "IT",
+      "themes": [
+        {
+          "theme": "반도체",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "SMH",
+      "market": "US",
+      "name": "VanEck Semiconductor ETF",
+      "asset_class": "equity_etf",
+      "bucket": "semiconductor",
+      "sector": "반도체",
+      "parent_sector": "IT",
+      "themes": [
+        {
+          "theme": "반도체",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "SOXS",
+      "market": "US",
+      "name": "Direxion Daily Semiconductor Bear 3X",
+      "asset_class": "inverse_etf",
+      "bucket": "semiconductor_inverse",
+      "sector": "반도체",
+      "parent_sector": "IT",
+      "themes": [
+        {
+          "theme": "반도체",
+          "relation": "hedge"
+        }
+      ]
+    },
+    {
+      "ticker": "373220",
+      "market": "KRX",
+      "name": "LG에너지솔루션",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "배터리",
+      "parent_sector": "소재",
+      "themes": [
+        {
+          "theme": "2차전지",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "006400",
+      "market": "KRX",
+      "name": "삼성SDI",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "배터리",
+      "parent_sector": "소재",
+      "themes": [
+        {
+          "theme": "2차전지",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "247540",
+      "market": "KRX",
+      "name": "에코프로비엠",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "배터리소재",
+      "parent_sector": "소재",
+      "themes": [
+        {
+          "theme": "2차전지",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "086520",
+      "market": "KRX",
+      "name": "에코프로",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "배터리소재",
+      "parent_sector": "소재",
+      "themes": [
+        {
+          "theme": "2차전지",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "066970",
+      "market": "KRX",
+      "name": "엘앤에프",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "배터리소재",
+      "parent_sector": "소재",
+      "themes": [
+        {
+          "theme": "2차전지",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "003670",
+      "market": "KRX",
+      "name": "포스코퓨처엠",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "배터리소재",
+      "parent_sector": "소재",
+      "themes": [
+        {
+          "theme": "2차전지",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "LIT",
+      "market": "US",
+      "name": "Global X Lithium & Battery Tech ETF",
+      "asset_class": "equity_etf",
+      "bucket": null,
+      "sector": "배터리",
+      "parent_sector": "소재",
+      "themes": [
+        {
+          "theme": "2차전지",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "207940",
+      "market": "KRX",
+      "name": "삼성바이오로직스",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "제약바이오",
+      "parent_sector": "헬스케어",
+      "themes": [
+        {
+          "theme": "바이오",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "068270",
+      "market": "KRX",
+      "name": "셀트리온",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "제약바이오",
+      "parent_sector": "헬스케어",
+      "themes": [
+        {
+          "theme": "바이오",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "196170",
+      "market": "KRX",
+      "name": "알테오젠",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "제약바이오",
+      "parent_sector": "헬스케어",
+      "themes": [
+        {
+          "theme": "바이오",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "326030",
+      "market": "KRX",
+      "name": "SK바이오팜",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "제약바이오",
+      "parent_sector": "헬스케어",
+      "themes": [
+        {
+          "theme": "바이오",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "LLY",
+      "market": "US",
+      "name": "Eli Lilly",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "제약",
+      "parent_sector": "헬스케어",
+      "themes": [
+        {
+          "theme": "바이오",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "NVO",
+      "market": "US",
+      "name": "Novo Nordisk",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "제약",
+      "parent_sector": "헬스케어",
+      "themes": [
+        {
+          "theme": "바이오",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "XBI",
+      "market": "US",
+      "name": "SPDR S&P Biotech ETF",
+      "asset_class": "equity_etf",
+      "bucket": null,
+      "sector": "제약바이오",
+      "parent_sector": "헬스케어",
+      "themes": [
+        {
+          "theme": "바이오",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "IBB",
+      "market": "US",
+      "name": "iShares Biotechnology ETF",
+      "asset_class": "equity_etf",
+      "bucket": null,
+      "sector": "제약바이오",
+      "parent_sector": "헬스케어",
+      "themes": [
+        {
+          "theme": "바이오",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "454910",
+      "market": "KRX",
+      "name": "두산로보틱스",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "로봇",
+      "parent_sector": "산업재",
+      "themes": [
+        {
+          "theme": "로봇",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "056080",
+      "market": "KRX",
+      "name": "유진로봇",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "로봇",
+      "parent_sector": "산업재",
+      "themes": [
+        {
+          "theme": "로봇",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "108490",
+      "market": "KRX",
+      "name": "로보티즈",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "로봇",
+      "parent_sector": "산업재",
+      "themes": [
+        {
+          "theme": "로봇",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "ISRG",
+      "market": "US",
+      "name": "Intuitive Surgical",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "의료로봇",
+      "parent_sector": "헬스케어",
+      "themes": [
+        {
+          "theme": "로봇",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "BOTZ",
+      "market": "US",
+      "name": "Global X Robotics & AI ETF",
+      "asset_class": "equity_etf",
+      "bucket": "robotics",
+      "sector": "로봇",
+      "parent_sector": "산업재",
+      "themes": [
+        {
+          "theme": "로봇",
+          "relation": "core"
+        },
+        {
+          "theme": "AI",
+          "relation": "adjacent"
+        }
+      ]
+    },
+    {
+      "ticker": "ROBO",
+      "market": "US",
+      "name": "ROBO Global Robotics & Automation ETF",
+      "asset_class": "equity_etf",
+      "bucket": "robotics",
+      "sector": "로봇",
+      "parent_sector": "산업재",
+      "themes": [
+        {
+          "theme": "로봇",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "ARKQ",
+      "market": "US",
+      "name": "ARK Autonomous Tech & Robotics ETF",
+      "asset_class": "equity_etf",
+      "bucket": "robotics",
+      "sector": "로봇",
+      "parent_sector": "산업재",
+      "themes": [
+        {
+          "theme": "로봇",
+          "relation": "core"
+        },
+        {
+          "theme": "AI",
+          "relation": "adjacent"
+        }
+      ]
+    },
+    {
+      "ticker": "035420",
+      "market": "KRX",
+      "name": "NAVER",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "인터넷",
+      "parent_sector": "IT",
+      "themes": [
+        {
+          "theme": "AI",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "035720",
+      "market": "KRX",
+      "name": "카카오",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "인터넷",
+      "parent_sector": "IT",
+      "themes": [
+        {
+          "theme": "AI",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "MSFT",
+      "market": "US",
+      "name": "Microsoft",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "소프트웨어",
+      "parent_sector": "IT",
+      "themes": [
+        {
+          "theme": "AI",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "GOOGL",
+      "market": "US",
+      "name": "Alphabet",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "인터넷",
+      "parent_sector": "IT",
+      "themes": [
+        {
+          "theme": "AI",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "PLTR",
+      "market": "US",
+      "name": "Palantir Technologies",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "소프트웨어",
+      "parent_sector": "IT",
+      "themes": [
+        {
+          "theme": "AI",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "012450",
+      "market": "KRX",
+      "name": "한화에어로스페이스",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "방위산업",
+      "parent_sector": "산업재",
+      "themes": [
+        {
+          "theme": "방산",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "047810",
+      "market": "KRX",
+      "name": "한국항공우주",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "방위산업",
+      "parent_sector": "산업재",
+      "themes": [
+        {
+          "theme": "방산",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "064350",
+      "market": "KRX",
+      "name": "현대로템",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "방위산업",
+      "parent_sector": "산업재",
+      "themes": [
+        {
+          "theme": "방산",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "079550",
+      "market": "KRX",
+      "name": "LIG넥스원",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "방위산업",
+      "parent_sector": "산업재",
+      "themes": [
+        {
+          "theme": "방산",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "LMT",
+      "market": "US",
+      "name": "Lockheed Martin",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "방위산업",
+      "parent_sector": "산업재",
+      "themes": [
+        {
+          "theme": "방산",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "ITA",
+      "market": "US",
+      "name": "iShares US Aerospace & Defense ETF",
+      "asset_class": "equity_etf",
+      "bucket": null,
+      "sector": "방위산업",
+      "parent_sector": "산업재",
+      "themes": [
+        {
+          "theme": "방산",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "009540",
+      "market": "KRX",
+      "name": "HD한국조선해양",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "조선",
+      "parent_sector": "산업재",
+      "themes": [
+        {
+          "theme": "조선",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "010140",
+      "market": "KRX",
+      "name": "삼성중공업",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "조선",
+      "parent_sector": "산업재",
+      "themes": [
+        {
+          "theme": "조선",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "042660",
+      "market": "KRX",
+      "name": "한화오션",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "조선",
+      "parent_sector": "산업재",
+      "themes": [
+        {
+          "theme": "조선",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "010620",
+      "market": "KRX",
+      "name": "HD현대미포",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "조선",
+      "parent_sector": "산업재",
+      "themes": [
+        {
+          "theme": "조선",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "105560",
+      "market": "KRX",
+      "name": "KB금융",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "은행",
+      "parent_sector": "금융",
+      "themes": [
+        {
+          "theme": "금융",
+          "relation": "core"
+        },
+        {
+          "theme": "배당",
+          "relation": "adjacent"
+        }
+      ]
+    },
+    {
+      "ticker": "055550",
+      "market": "KRX",
+      "name": "신한지주",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "은행",
+      "parent_sector": "금융",
+      "themes": [
+        {
+          "theme": "금융",
+          "relation": "core"
+        },
+        {
+          "theme": "배당",
+          "relation": "adjacent"
+        }
+      ]
+    },
+    {
+      "ticker": "086790",
+      "market": "KRX",
+      "name": "하나금융지주",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "은행",
+      "parent_sector": "금융",
+      "themes": [
+        {
+          "theme": "금융",
+          "relation": "core"
+        },
+        {
+          "theme": "배당",
+          "relation": "adjacent"
+        }
+      ]
+    },
+    {
+      "ticker": "316140",
+      "market": "KRX",
+      "name": "우리금융지주",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "은행",
+      "parent_sector": "금융",
+      "themes": [
+        {
+          "theme": "금융",
+          "relation": "core"
+        },
+        {
+          "theme": "배당",
+          "relation": "adjacent"
+        }
+      ]
+    },
+    {
+      "ticker": "JPM",
+      "market": "US",
+      "name": "JPMorgan Chase",
+      "asset_class": "stock",
+      "bucket": null,
+      "sector": "은행",
+      "parent_sector": "금융",
+      "themes": [
+        {
+          "theme": "금융",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "XLF",
+      "market": "US",
+      "name": "Financial Select Sector SPDR",
+      "asset_class": "equity_etf",
+      "bucket": null,
+      "sector": "금융",
+      "parent_sector": "금융",
+      "themes": [
+        {
+          "theme": "금융",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "SCHD",
+      "market": "US",
+      "name": "Schwab US Dividend Equity ETF",
+      "asset_class": "dividend_etf",
+      "bucket": null,
+      "sector": "배당",
+      "parent_sector": "배당",
+      "themes": [
+        {
+          "theme": "배당",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "VYM",
+      "market": "US",
+      "name": "Vanguard High Dividend Yield ETF",
+      "asset_class": "dividend_etf",
+      "bucket": null,
+      "sector": "배당",
+      "parent_sector": "배당",
+      "themes": [
+        {
+          "theme": "배당",
+          "relation": "core"
+        }
+      ]
+    },
+    {
+      "ticker": "JEPI",
+      "market": "US",
+      "name": "JPMorgan Equity Premium Income ETF",
+      "asset_class": "dividend_etf",
+      "bucket": null,
+      "sector": "배당",
+      "parent_sector": "배당",
+      "themes": [
+        {
+          "theme": "배당",
+          "relation": "core"
+        }
+      ]
+    }
+  ]
+}

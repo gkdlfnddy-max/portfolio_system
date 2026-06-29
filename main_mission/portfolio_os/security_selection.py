@@ -48,56 +48,12 @@ from .candidate import candidate_evaluation
 # 주의: 이건 "후보 나열"일 뿐 추천이 아니다. 지표 미연동이면 정직하게 unknown 표기한다.
 # 국채 bucket 후보는 A 에이전트(bond_bucket) 시드를 우선 사용하고, 없으면 빈 채로 둔다.
 
-BUCKETS: dict[str, dict] = {
-    "global_core": {
-        "label": "글로벌 코어 ETF",
-        "kind": "etf",
-        "seed": ["SPY", "VOO", "QQQ", "VT", "VTI"],
-        "note": "광범위 시장 노출(코어). 후보 간 차이는 구성/비용/지역 노출에서 비교한다.",
-    },
-    "robotics": {
-        "label": "로봇/자동화",
-        "kind": "etf",
-        "seed": ["BOTZ", "ROBO", "ARKQ"],
-        "note": "로봇·자동화 테마 ETF. 구성 겹침·집중도를 비교한다.",
-    },
-    "semiconductor": {
-        "label": "반도체",
-        "kind": "mixed",
-        "seed": ["SOXX", "SMH", "005930", "000660"],
-        "note": "반도체 ETF + 개별 대표주(삼성전자 005930 / SK하이닉스 000660).",
-    },
-    "semiconductor_inverse": {
-        "label": "반도체 인버스(헤지)",
-        "kind": "inverse",
-        "seed": ["SOXS", "KODEX 반도체인버스"],
-        "note": "헤지 전용 bucket. 인버스는 hedge bucket 한정(롱 자산 대체 아님).",
-    },
-    "treasury": {
-        "label": "국채(방어)",
-        "kind": "bond",
-        "seed": [],  # A 에이전트 bond_bucket 시드 사용 (아래 _bond_seed)
-        "note": "국채는 방어(현금의 일부). 후보 시드는 A 에이전트(bond_bucket)에서 가져온다.",
-    },
-}
-
-# 시드 종목 메타 라벨(표시용 — 지표가 아니라 이름/시장 식별만). 가짜 지표 아님.
-_TICKER_META: dict[str, dict] = {
-    "SPY": {"name": "SPDR S&P 500 ETF", "market": "US", "asset_class": "equity_etf"},
-    "VOO": {"name": "Vanguard S&P 500 ETF", "market": "US", "asset_class": "equity_etf"},
-    "QQQ": {"name": "Invesco QQQ (Nasdaq-100)", "market": "US", "asset_class": "equity_etf"},
-    "VT": {"name": "Vanguard Total World Stock ETF", "market": "US", "asset_class": "equity_etf"},
-    "VTI": {"name": "Vanguard Total US Stock Market ETF", "market": "US", "asset_class": "equity_etf"},
-    "BOTZ": {"name": "Global X Robotics & AI ETF", "market": "US", "asset_class": "equity_etf"},
-    "ROBO": {"name": "ROBO Global Robotics & Automation ETF", "market": "US", "asset_class": "equity_etf"},
-    "ARKQ": {"name": "ARK Autonomous Tech & Robotics ETF", "market": "US", "asset_class": "equity_etf"},
-    "SOXX": {"name": "iShares Semiconductor ETF", "market": "US", "asset_class": "equity_etf"},
-    "SMH": {"name": "VanEck Semiconductor ETF", "market": "US", "asset_class": "equity_etf"},
-    "005930": {"name": "삼성전자", "market": "KRX", "asset_class": "stock"},
-    "000660": {"name": "SK하이닉스", "market": "KRX", "asset_class": "stock"},
-    "SOXS": {"name": "Direxion Daily Semiconductor Bear 3X (인버스)", "market": "US", "asset_class": "inverse_etf"},
-    "KODEX 반도체인버스": {"name": "KODEX 반도체인버스", "market": "KRX", "asset_class": "inverse_etf"},
-}
+# 종목/ETF bucket 시드 + 메타 — **단일 원본(config/portfolio/instruments.json)** 에서 로드.
+# 코드 하드코딩 금지(CEO: 하드코딩 다 제거). 종목/테마/섹터/bucket 추가·수정은 그 파일만 고친다.
+from . import instrument_master as _im
+BUCKETS: dict[str, dict] = _im.bucket_specs()          # {bucket:{label,kind,note,seed:[tickers]}}
+# 시드 종목 메타(표시용 이름/시장/자산군 — 지표 아님). 단일 원본에서 로드.
+_TICKER_META: dict[str, dict] = _im.ticker_meta_map()  # {ticker:{name,market,asset_class}}
 
 
 def list_buckets() -> dict:
