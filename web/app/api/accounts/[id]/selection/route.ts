@@ -180,13 +180,17 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   }
   const rawPicks = Array.isArray(body?.picks) ? body.picks : [];
   const weighting = ["equal", "view"].includes(String(body?.weighting)) ? String(body.weighting) : "equal";
+  // 개별주 carve 옵션(none|5|10) — allocate 가 위험자산에서 떼어 picks['individual'] 에 균등 배분.
+  const equityOption = ["none", "5", "10"].includes(String(body?.equity_option)) ? String(body.equity_option) : "none";
 
   // picks 를 weight_allocator 가 받는 형태 {bucket: [ticker, ...]} 로 변환.
+  //   asset_class=stock(개별주)는 'individual' 키로 모은다(carve 대상). ETF/앵커는 자기 bucket.
   const picksByBucket: Record<string, string[]> = {};
   for (const p of rawPicks) {
     if (!p || !p.ticker || !p.bucket) continue;
-    const b = String(p.bucket);
     const t = String(p.ticker);
+    const ac = String(p.asset_class ?? "");
+    const b = ac === "stock" ? "individual" : String(p.bucket);
     (picksByBucket[b] ||= []);
     if (!picksByBucket[b].includes(t)) picksByBucket[b].push(t);
   }
@@ -200,6 +204,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
           "--account", String(id),
           "--picks", JSON.stringify(picksByBucket),
           "--weighting", weighting,
+          "--equity-option", equityOption,
         ])
       : Promise.resolve({ ready: false, data: null, note: "선택된 후보가 없습니다 — 후보를 고르면 확정안 한도 안에서 draft 비중을 계산합니다." }),
     section("weight_allocator", ["--account", String(id), "--individual-options"]),

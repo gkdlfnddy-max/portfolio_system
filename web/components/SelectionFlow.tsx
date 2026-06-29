@@ -1940,8 +1940,8 @@ function ApprovalStep({ acknowledged, onAck, savedAt }: { acknowledged: boolean;
 }
 
 // ── Step 7: 분할 진입 계획 (분할 횟수·기간만 입력 → 시스템이 저점 지정가 사다리 자동 생성) ──
-function SplitEntryStep({ accountId, picks, plan, setPlan }: {
-  accountId: number; picks: Pick[]; plan: any; setPlan: (p: any) => void;
+function SplitEntryStep({ accountId, picks, plan, setPlan, equityOption }: {
+  accountId: number; picks: Pick[]; plan: any; setPlan: (p: any) => void; equityOption: EquityOption;
 }) {
   const [rounds, setRounds] = useState(3);
   const [period, setPeriod] = useState(14);
@@ -1973,8 +1973,8 @@ function SplitEntryStep({ accountId, picks, plan, setPlan }: {
       const res = await fetch(`/api/accounts/${accountId}/split-plan`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          rounds, period_days: period,
-          picks: picks.map((p) => ({ bucket: p.bucket, ticker: p.ticker })),
+          rounds, period_days: period, equity_option: equityOption,
+          picks: picks.map((p) => ({ bucket: p.bucket, ticker: p.ticker, asset_class: p.asset_class })),
         }),
       });
       const data = await res.json();
@@ -2094,7 +2094,7 @@ function SplitEntryStep({ accountId, picks, plan, setPlan }: {
 }
 
 // ── Step 8: 주문 전 최종 확인 + 집행(paper 우선, live 잠금) ──
-function FinalCheckStep({ accountId, plan, acknowledged, picks, alloc }: { accountId: number; plan: any; acknowledged: boolean; picks: Pick[]; alloc: AllocSection | null }) {
+function FinalCheckStep({ accountId, plan, acknowledged, picks, alloc, equityOption }: { accountId: number; plan: any; acknowledged: boolean; picks: Pick[]; alloc: AllocSection | null; equityOption: EquityOption }) {
   const filled: any[] = plan?.steps ?? [];
   const draft: any[] = (alloc?.ready && alloc.data)
     ? (alloc.data.holdings ?? alloc.data.draft_weights ?? alloc.data.allocations ?? []).filter((h: any) => Number(h.weight_pct ?? h.weight ?? 0) > 0)
@@ -2112,9 +2112,9 @@ function FinalCheckStep({ accountId, plan, acknowledged, picks, alloc }: { accou
       const res = await fetch(`/api/accounts/${accountId}/execute`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          mode, approve: true,
+          mode, approve: true, equity_option: equityOption,
           rounds: plan?.rounds, period_days: plan?.period_days,
-          picks: picks.map((p) => ({ bucket: p.bucket, ticker: p.ticker })),
+          picks: picks.map((p) => ({ bucket: p.bucket, ticker: p.ticker, asset_class: p.asset_class })),
         }),
       });
       setExecResult(await res.json());
@@ -2407,9 +2407,9 @@ export function SelectionFlow({ accountId }: { accountId: number }) {
       case 6:
         return <ApprovalStep acknowledged={acknowledged} onAck={setAcknowledged} savedAt={draftSavedAt} />;
       case 7:
-        return <SplitEntryStep accountId={accountId} picks={picks} plan={splitPlan} setPlan={setSplitPlan} />;
+        return <SplitEntryStep accountId={accountId} picks={picks} plan={splitPlan} setPlan={setSplitPlan} equityOption={equityOption} />;
       case 8:
-        return <FinalCheckStep accountId={accountId} plan={splitPlan} acknowledged={acknowledged} picks={picks} alloc={alloc} />;
+        return <FinalCheckStep accountId={accountId} plan={splitPlan} acknowledged={acknowledged} picks={picks} alloc={alloc} equityOption={equityOption} />;
       default:
         return null;
     }

@@ -41,7 +41,8 @@ def build_split_plan(account_index: int, picks: dict, *, prices: dict, cash_krw:
                      rounds: int = ROUNDS_DEFAULT, period_days: int = 14,
                      knee_pct: float = KNEE_PCT_DEFAULT, weighting: str = "equal",
                      markets: dict | None = None, sell_rules: dict | None = None,
-                     plan_token: str | None = None, fx_rates: dict | None = None) -> dict:
+                     plan_token: str | None = None, fx_rates: dict | None = None,
+                     equity_option: str = "none") -> dict:
     """확정안 + picks → **기간·횟수만으로** 분할 저점 지정가 전략 plan(제안만, 주문 X).
 
     CEO 모델: 기간(period_days)+분할횟수(rounds)만 정하면 나머지(저점 사다리 가격/수량/스케줄/
@@ -50,7 +51,7 @@ def build_split_plan(account_index: int, picks: dict, *, prices: dict, cash_krw:
     반환: {ok, rounds, period_days, steps[](schedule_day 포함), sell_rules, total_target_krw,
            blocked, requires_user_approval=True, auto_order_created=False}
     """
-    alloc = wa.allocate(account_index, picks, weighting=weighting)
+    alloc = wa.allocate(account_index, picks, weighting=weighting, equity_option=equity_option)
     if not alloc.get("ok"):
         return {"ok": False, "error": alloc.get("error", "allocate 실패"),
                 "requires_user_approval": True, "auto_order_created": False}
@@ -198,6 +199,8 @@ def main() -> int:
     ap.add_argument("--knee", type=float, default=KNEE_PCT_DEFAULT)
     ap.add_argument("--token", default=None,
                     help="plan 토큰(주문ID 구분자). 미지정 시 오늘 날짜(YYYYMMDD) — 사이클 간 stale 차단")
+    ap.add_argument("--equity-option", default="none", choices=("none", "5", "10"),
+                    help="개별주 carve(picks['individual'] 에 위험자산 5%/10% 균등)")
     a = ap.parse_args()
 
     try:
@@ -240,7 +243,8 @@ def main() -> int:
     token = a.token or datetime.now(timezone.utc).strftime("%Y%m%d")
     plan = build_split_plan(a.account, picks, prices=prices, cash_krw=cash,
                             rounds=a.rounds, period_days=a.period, knee_pct=a.knee,
-                            markets=markets, plan_token=token, fx_rates=fx_rates_for_markets(markets))
+                            markets=markets, plan_token=token, fx_rates=fx_rates_for_markets(markets),
+                            equity_option=a.equity_option)
     sys.stdout.write(json.dumps(plan, ensure_ascii=False))
     return 0
 

@@ -218,7 +218,8 @@ def _valid_tickers(account_index: int, bucket_key: str, picks: list[str], conn) 
 # ---------------------------------------------------------------------------
 # 메인: allocate
 # ---------------------------------------------------------------------------
-def allocate(account_index: int, picks: dict, *, weighting: str = "equal") -> dict:
+def allocate(account_index: int, picks: dict, *, weighting: str = "equal",
+             equity_option: str = "none") -> dict:
     """확정안 bucket 한도 안에서 선택 종목/ETF 에 비중 배분 → **draft target holdings**.
 
     picks = {bucket_key: [ticker, ...]}.  각 bucket 의 **확정안 weight** 를 그 bucket 의
@@ -226,6 +227,10 @@ def allocate(account_index: int, picks: dict, *, weighting: str = "equal") -> di
     그대로 보존(앵커 ETF 등은 자기 자신을 단일 후보로 둔다).
 
     weighting: 'equal'(균등) | 'view'(관점 conviction 가중).
+    equity_option: 'none'|'5'|'10' — 개별주 carve. picks['individual'] 의 개별주에
+      위험자산(anchor+tilt)에서 5%/10% 를 떼어 균등 배분(종목당 ≤2%, 단일 한도 이내).
+      anchor/tilt 비중을 그만큼 비례 축소 → **합계 100 불변**. 개별주 검증은 하드코딩 시드가
+      아니라 instrument_master(DB, verified stock)로 한다(가짜/미검증 티커 제외).
     반환:
       {
         ok, account_index, variant, source,
@@ -252,10 +257,34 @@ def allocate(account_index: int, picks: dict, *, weighting: str = "equal") -> di
         bucket_summary: list[dict] = []
         warnings: list[dict] = []
 
+        # --- 개별주 carve(equity_option) 셋업 — 위험자산(anchor+tilt)에서 5%/10% 떼어 균등 배분 ---
+        #   개별주 검증은 instrument_master(DB, verified stock)로 한다(하드코딩 시드 금지).
+        from . import instrument_master as _im
+        at_pct = round(sum(b["weight_pct"] for b in cb["buckets"] if b["kind"] in ("anchor", "tilt")), ROUND)
+        carve_scale = 1.0
+        indiv_per_name = 0.0
+        valid_indiv: list[str] = []
+        if equity_option in ("5", "10") and at_pct > 0:
+            cap = float(equity_option)
+            for tk in list(dict.fromkeys(picks.get("individual", []))):
+                info = _im.get(tk, conn=conn)
+                if info and info.get("verified") and not info.get("is_etf"):
+                    valid_indiv.append(tk)
+                else:
+                    warnings.append({"level": "warn", "bucket": "individual", "ticker": tk,
+                                     "msg": f"'{tk}' instrument_master 미검증/ETF — 개별주 carve 제외(가짜 금지)."})
+            if valid_indiv:
+                eff_cap = round(min(cap, at_pct), ROUND)           # 위험자산보다 더 못 뗀다(정직)
+                per = min(eff_cap / len(valid_indiv), 2.0, single_max)  # 종목당 ≤2%·단일 한도
+                indiv_per_name = round(per, ROUND)
+                actual_carve = round(indiv_per_name * len(valid_indiv), ROUND)
+                carve_scale = round((at_pct - actual_carve) / at_pct, 6)  # anchor/tilt 비례 축소
+
         for b in cb["buckets"]:
             key = b["key"]
-            w = b["weight_pct"]
             kind = b["kind"]
+            # carve 적용 시 anchor/tilt 비중을 비례 축소(개별주로 간 만큼). hedge/방어는 불변.
+            w = round(b["weight_pct"] * carve_scale, ROUND) if kind in ("anchor", "tilt") else b["weight_pct"]
             raw_picks = list(dict.fromkeys(picks.get(key, [])))  # 중복 제거, 순서 보존
 
             valid, unknown = ([], [])
@@ -297,6 +326,20 @@ def allocate(account_index: int, picks: dict, *, weighting: str = "equal") -> di
             if allocated > w + 0.05:
                 warnings.append({"level": "block", "bucket": key,
                                  "msg": f"bucket '{key}' 배분합 {allocated}% > 확정안 {w}% (초과 금지 위반)."})
+
+        # --- 개별주 carve holdings — 위험자산에서 떼어낸 만큼을 개별주에 균등 배분(종목당 indiv_per_name%) ---
+        if valid_indiv and indiv_per_name > 0:
+            carve_total = round(indiv_per_name * len(valid_indiv), ROUND)
+            for tk in valid_indiv:
+                info = _im.get(tk, conn=conn) or {}
+                holdings.append({"kind": "individual", "ref": "개별주", "ticker": tk,
+                                 "weight_pct": indiv_per_name, "bucket": "individual",
+                                 "bucket_weight_pct": carve_total,
+                                 "name": info.get("name"),
+                                 "basis": (f"개별주 carve(옵션 {equity_option}%): 위험자산에서 {len(valid_indiv)}종 "
+                                           f"균등 {indiv_per_name}%/종 (단일 2% 상한·합 {carve_total}%)")})
+            bucket_summary.append({"key": "individual", "kind": "individual", "weight_pct": carve_total,
+                                   "allocated_pct": carve_total, "picks": valid_indiv, "headroom_pct": 0.0})
 
         # 방어자산(현금/국채)은 equity 배분 대상 아님 — 확정안 그대로 holdings 에 보존.
         dfn = cb["defensive"]
@@ -430,8 +473,10 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="비중 조절 엔진 (확정안 bucket 한도 내 배분, 읽기 전용)")
     ap.add_argument("--account", type=int, required=True)
     ap.add_argument("--confirmed", action="store_true", help="확정안 bucket 정리")
-    ap.add_argument("--picks", help='JSON {"bucket":["ticker",...]} — bucket 내 배분')
+    ap.add_argument("--picks", help='JSON {"bucket":["ticker",...]} — bucket 내 배분. "individual" 키=개별주 carve 대상')
     ap.add_argument("--weighting", default="equal", choices=("equal", "view"))
+    ap.add_argument("--equity-option", default="none", choices=("none", "5", "10"),
+                    help="개별주 carve: none|5|10 (위험자산에서 5%/10% 떼어 picks['individual'] 균등)")
     ap.add_argument("--individual-options", action="store_true", help="개별주 A/B/C 옵션")
     args = ap.parse_args()
     try:
@@ -439,7 +484,7 @@ def main() -> int:
             out = confirmed_buckets(args.account)
         elif args.picks is not None:
             picks = json.loads(args.picks)
-            out = allocate(args.account, picks, weighting=args.weighting)
+            out = allocate(args.account, picks, weighting=args.weighting, equity_option=args.equity_option)
         elif args.individual_options:
             out = individual_bucket_options(args.account)
         else:

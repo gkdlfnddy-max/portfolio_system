@@ -62,18 +62,20 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       error: `live 집행은 이중확인 문구(${LIVE_PHRASE})가 필요합니다. 또한 서버에 KIS_LIVE_CONFIRM 이 설정돼야 합니다(§15).` }, { status: 400 });
   }
 
-  // picks: [{bucket,ticker}] → {bucket:[ticker,...]}
+  // picks: [{bucket,ticker,asset_class}] → {bucket:[ticker,...]}. 개별주(stock)는 'individual'(carve 대상).
   const picksByBucket: Record<string, string[]> = {};
   for (const p of Array.isArray(body?.picks) ? body.picks : []) {
     if (!p?.bucket || !p?.ticker) continue;
-    (picksByBucket[String(p.bucket)] ||= []);
-    if (!picksByBucket[String(p.bucket)].includes(String(p.ticker))) picksByBucket[String(p.bucket)].push(String(p.ticker));
+    const b = String(p.asset_class ?? "") === "stock" ? "individual" : String(p.bucket);
+    (picksByBucket[b] ||= []);
+    if (!picksByBucket[b].includes(String(p.ticker))) picksByBucket[b].push(String(p.ticker));
   }
   if (Object.keys(picksByBucket).length === 0) {
     return NextResponse.json({ ok: false, error: "선택된 후보가 없습니다." }, { status: 400 });
   }
   const rounds = Math.max(1, Math.min(10, parseInt(String(body?.rounds ?? 3), 10) || 3));
   const period = Math.max(1, Math.min(120, parseInt(String(body?.period_days ?? 14), 10) || 14));
+  const equityOption = ["none", "5", "10"].includes(String(body?.equity_option)) ? String(body.equity_option) : "none";
 
   const args = [
     "--account", String(id),
@@ -82,6 +84,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     "--approve",
     "--rounds", String(rounds),
     "--period", String(period),
+    "--equity-option", equityOption,
   ];
   if (mode === "live") args.push("--i-understand-live", LIVE_PHRASE);
 
