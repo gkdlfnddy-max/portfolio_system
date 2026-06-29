@@ -81,41 +81,57 @@ def build_split_plan(account_index: int, picks: dict, *, prices: dict, cash_krw:
         weight = float(h["weight_pct"])
         total_krw = cash_krw * weight / 100.0
         total_target += total_krw
-        # 회차당 비중: 균등 분할하되 1주문 한도(one_order_cap) 이내로 캡.
-        per_round_pct = min(weight / rounds, one_order_cap)
         mkt, ccy = markets.get(tk, ("KRX", "KRW"))
         is_foreign = ccy != "KRW"
-        # 통화 환산: KRW=1.0(불변). 외화(USD 등)는 fx_rates 의 환율로 KRW 예산을 통화로 환산.
-        #   fx_rates 가 None = 환산 비활성(legacy/KRW). dict 로 제공됐는데 해당 통화 환율이
-        #   없으면 **잘못된 수량 방지**를 위해 스킵(가짜 환산 금지) — 정직.
+        # 통화 환산: KRW=1.0(불변). fx_rates 제공됐는데 해당 통화 없으면 스킵(가짜 환산 금지).
         if is_foreign and fx_rates is not None and ccy not in fx_rates:
             skipped.append({"ticker": tk,
                             "reason": f"{ccy} 환율 미연동 — KRW 환산 불가(집행 보류, 환율 적재 필요)"})
             continue
         fx = float((fx_rates or {}).get(ccy, 1.0)) or 1.0
-        for r in range(1, rounds + 1):
-            # 저점 사다리: 회차가 깊어질수록 더 낮은 지정가(무릎→그 아래). 걸리면 체결, 아니면 미체결.
-            #   해외(USD)는 소수 2자리(센트) 호가, 국내는 정수.
+        # ── 버림(floor) 기준 + 1주 보장 + 드롭 ──
+        #   종목 전체 예산(weight×cash)으로 살 수 있는 **정수 주식**만 매수(소수주 없음).
+        #   시드(예산)가 1주보다 작으면 못 사므로 드롭(정직). 1주문 한도(one_order_cap)도 준수.
+        one_order_cap_ccy = (cash_krw * one_order_cap / 100.0) / fx      # 1주문 한도(종목 통화)
+        name_budget_ccy = total_krw / fx                                 # 종목 전체 예산(통화)
+        ref_limit = (round(price * (1 - knee_pct / 100.0), 2) if is_foreign
+                     else round(price * (1 - knee_pct / 100.0)))         # 1회차(최고가) 기준 호가
+        unit = ccy
+        if ref_limit <= 0:
+            continue
+        if ref_limit > one_order_cap_ccy:
+            skipped.append({"ticker": tk,
+                            "reason": f"1주({ref_limit:,} {unit})가 1주문 한도({one_order_cap}%="
+                                      f"{one_order_cap_ccy:,.0f} {unit}) 초과 — 분산/자본 조정 필요"})
+            continue
+        shares_total = math.floor(name_budget_ccy / ref_limit)           # 버림 — 살 수 있는 정수 주식
+        if shares_total < 1:
+            budget_str = f"{name_budget_ccy:,.2f}{unit}" if is_foreign else f"{name_budget_ccy:,.0f}원"
+            skipped.append({"ticker": tk,
+                            "reason": f"예산 {budget_str} < 1주({ref_limit:,} {unit}) — 시드 부족(버림→0, 드롭)"})
+            continue
+        eff_rounds = min(rounds, shares_total)         # 살 수 있는 주식 수만큼만 회차 분할(회차당 ≥1주 보장)
+        base_q, rem = divmod(shares_total, eff_rounds)  # 균등 분배 + 나머지는 앞 회차에(버림)
+        for r in range(1, eff_rounds + 1):
+            # 저점 사다리: 회차가 깊어질수록 더 낮은 지정가. 해외는 소수 2자리 호가.
             raw_limit = price * (1 - knee_pct * r / 100.0)
             limit = round(raw_limit, 2) if is_foreign else round(raw_limit)
-            cycle_krw = cash_krw * per_round_pct / 100.0
-            cycle_in_ccy = cycle_krw / fx              # KRW 예산 → 종목 통화 예산(USD 등)
-            qty = math.floor(cycle_in_ccy / limit) if limit > 0 else 0
-            if qty < 1:
-                unit = ccy
-                budget_str = f"{cycle_in_ccy:,.2f}{unit}" if is_foreign else f"{cycle_krw:,.0f}원"
-                skipped.append({"ticker": tk, "round": r,
-                                "reason": f"회차 예산 {budget_str} < 1주({limit:,} {unit}) — 스킵"})
+            q = base_q + (1 if r <= rem else 0)
+            max_q = math.floor(one_order_cap_ccy / limit) if limit > 0 else 0   # 회차 1주문 한도 재확인
+            q = min(q, max_q)
+            if q < 1:
                 continue
+            cycle_krw = q * limit * fx
             steps.append({
                 "ticker": tk, "market": mkt, "currency": ccy, "side": "buy",
-                "order_type": "limit", "limit_price": limit, "qty": qty,
-                "round_no": r, "total_rounds": rounds,
-                "schedule_day": round((r - 1) * period_days / rounds),  # 기간 내 회차 분산(일)
+                "order_type": "limit", "limit_price": limit, "qty": q,
+                "round_no": r, "total_rounds": eff_rounds,
+                "schedule_day": round((r - 1) * period_days / eff_rounds),  # 기간 내 회차 분산(일)
                 "drop_pct": round(knee_pct * r, 1),          # 현재가 대비 하락률(저점 깊이)
-                "weight_pct": round(weight, 2), "cycle_pct": round(per_round_pct, 2),
+                "weight_pct": round(weight, 2),
+                "cycle_pct": round(cycle_krw / cash_krw * 100.0, 2),
                 "cycle_krw": round(cycle_krw), "fx_rate": (round(fx, 2) if is_foreign else None),
-                "bucket": h.get("bucket"),
+                "bucket": h.get("bucket"), "shares_total": shares_total,
                 "on_unfilled": "no_chase",                    # 미체결이면 매수 안 함(추격·시장가 없음)
                 "client_order_id": f"exec-{account_index}-{tk}-r{r}{tok}",
             })

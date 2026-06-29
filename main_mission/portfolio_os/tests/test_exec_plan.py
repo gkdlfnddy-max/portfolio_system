@@ -52,7 +52,8 @@ def test_build_split_plan_proposes_rounds_no_order():
     # 모든 step 은 지정가 매수, 회차/한도 정보 포함
     for s in plan["steps"]:
         assert s["order_type"] == "limit" and s["side"] == "buy"
-        assert 1 <= s["round_no"] <= 3 and s["total_rounds"] == 3
+        # 버림+1주보장: total_rounds 는 살 수 있는 주식 수만큼(≤ 요청 rounds). qty 는 항상 ≥1주.
+        assert 1 <= s["round_no"] <= s["total_rounds"] <= 3
         assert s["limit_price"] > 0 and s["qty"] >= 1
         assert s["on_unfilled"] == "no_chase"   # 미체결이면 매수 안 함(추격·시장가 없음)
         # 1주문 회차 비중은 one_order_cap 이내
@@ -152,3 +153,41 @@ def test_execute_plan_one_approval_all_rounds():
     assert out["ok"] and out["rounds_executed"] == 3
     assert out["submitted"] == plan["step_count"]   # 모든 회차 step 예약 제출
     assert out["auto_order_created"] is False
+
+
+# 실제 시드 티커(instrument_master 검증 통과) + 통제 가격으로 floor/drop 검증.
+_MKT_KR = {t: ("KRX", "KRW") for t in ["000990", "042700", "005930", "000660"]}
+
+
+def test_floor_share_guarantee_and_drop():
+    """버림(floor)+1주 보장+드롭 — 시드 작으면 못 사고, 살 수 있으면 정수 주식 ≥1주."""
+    from main_mission.portfolio_os import instrument_master as im
+    _seed()
+    im.seed()  # 개별주 carve 는 instrument_master(DB) 로 검증 — 실종목만.
+    picks = {"individual": ["000990", "042700", "005930", "000660"]}
+    prices = {"000990": 10000, "042700": 120000, "005930": 354000, "000660": 2592000}
+    plan = exec_plan.build_split_plan(1, picks, prices=prices, cash_krw=9_900_000,
+                                      rounds=3, markets=_MKT_KR, equity_option="10")
+    assert plan["ok"]
+    by_t: dict = {}
+    for s in plan["steps"]:
+        assert s["qty"] >= 1                       # 1주 보장(소수주 없음)
+        assert 1 <= s["round_no"] <= s["total_rounds"] <= 3
+        by_t[s["ticker"]] = by_t.get(s["ticker"], 0) + s["qty"]
+    assert by_t.get("000990", 0) >= 1              # 싼 종목(1만)은 2% 예산(198k)으로 여러 주
+    # carve 2%=198k. 005930(35만) 1주 못 삼 → 드롭(시드 부족). 000660(259만) 1주문 한도 초과 → 드롭.
+    drops = {sk["ticker"]: sk["reason"] for sk in plan.get("skipped", []) if "ticker" in sk}
+    assert "005930" in drops and "시드 부족" in drops["005930"]
+    assert "000660" in drops and "한도" in drops["000660"]
+
+
+def test_qty_times_price_within_one_order_cap():
+    """모든 회차의 주문금액(qty×지정가)은 1주문 한도(one_order_cap) 이내."""
+    from main_mission.portfolio_os import instrument_master as im
+    _seed()
+    im.seed()
+    plan = exec_plan.build_split_plan(1, {"individual": ["000990"]}, prices={"000990": 10000},
+                                      cash_krw=9_900_000, rounds=2, markets=_MKT_KR, equity_option="10")
+    cap_krw = 9_900_000 * plan["one_order_cap_pct"] / 100.0
+    for s in plan["steps"]:
+        assert s["qty"] * s["limit_price"] <= cap_krw + 1
