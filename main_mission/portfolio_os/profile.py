@@ -17,23 +17,15 @@ from datetime import datetime, timezone
 from .store import db as store_db
 
 
-THEME_KEYWORDS = {
-    "로봇": ["로봇", "로보"],
-    "바이오": ["바이오", "제약", "헬스케어"],
-    "양자컴퓨터": ["양자", "퀀텀"],
-    "AI": ["AI", "인공지능", "에이아이"],
-    "반도체": ["반도체"],
-    "2차전지": ["2차전지", "이차전지", "배터리"],
-    "우주항공": ["우주", "항공"],
-    "방산": ["방산", "국방"],
-    "에너지": ["에너지", "태양광", "원전", "원자력"],
-}
+# 테마 키워드/헤지 정규화 — **단일 원본 config/portfolio/themes.json** 에서 로드(하드코딩 금지).
+from . import configs as _cfg
+THEME_KEYWORDS = _cfg.load("themes")["keywords"]
 
 
 # 섹터 + **지수/시장**(인버스로 숏 가능한 대상). 한국장·미국장도 지수 헤지로 인식.
 _SECT = r"반도체|바이오|로봇|양자|2차전지|에너지|방산|코스피200|코스피|코스닥|나스닥|S&P|한국\s*장|미국\s*장"
-# 지수/시장 라벨 정규화 — 인버스 ETF 단위로.
-_HEDGE_NORM = {"한국장": "코스피", "미국장": "나스닥"}
+# 지수/시장 라벨 정규화 — 인버스 ETF 단위로(설정 파일).
+_HEDGE_NORM = _cfg.load("themes")["hedge_norm"]
 
 
 def hedge_themes(text: str) -> str:

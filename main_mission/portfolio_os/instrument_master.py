@@ -45,20 +45,10 @@ def _flags(asset_class: str) -> tuple[int, int, int]:
 #   이 파일만 수정하면 master DB·bucket 시드·테마/섹터·_TICKER_META 가 모두 갱신된다.
 #   실재 종목만(KRX 는 seed 시 DART corp_map 검증).
 # ─────────────────────────────────────────────────────────────────────────────
-from pathlib import Path
-
-_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "portfolio" / "instruments.json"
-_config_cache: dict | None = None
-
-
 def load_config() -> dict:
-    """instruments.json(단일 원본) 로드(캐시). 파일 없으면 명확 실패(가짜 데이터 금지)."""
-    global _config_cache
-    if _config_cache is None:
-        import json as _json
-        with open(_CONFIG_PATH, encoding="utf-8") as f:
-            _config_cache = _json.load(f)
-    return _config_cache
+    """instruments.json(단일 원본) 로드 — 중앙 로더 configs 경유(코드 하드코딩 금지)."""
+    from . import configs
+    return configs.load("instruments")
 
 
 def _seed_records() -> list[dict]:

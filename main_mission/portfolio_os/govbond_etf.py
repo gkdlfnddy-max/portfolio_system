@@ -34,42 +34,9 @@ from .candidate import candidate_evaluation
 # expense_ratio/duration_years/yield 는 **연동 안 함** → 항상 unknown(가짜 금지).
 _UNKNOWN = "unknown"
 
-_UNIVERSE = [
-    # ---- 미국 국채 ETF (iShares) — KIS 해외 미연동(가격/거래량 unknown 정직) ----
-    {"ticker": "SHY", "name": "iShares 1-3Y Treasury", "region": "미국",
-     "duration_bucket": "short", "tracking_index": "ICE U.S. Treasury 1-3 Year Bond Index",
-     "hedged_or_unhedged": "USD(달러 표시·환노출)", "data_source": None,
-     "instrument_code": None},
-    {"ticker": "IEF", "name": "iShares 7-10Y Treasury", "region": "미국",
-     "duration_bucket": "intermediate", "tracking_index": "ICE U.S. Treasury 7-10 Year Bond Index",
-     "hedged_or_unhedged": "USD(달러 표시·환노출)", "data_source": None,
-     "instrument_code": None},
-    {"ticker": "TLT", "name": "iShares 20Y+ Treasury", "region": "미국",
-     "duration_bucket": "long", "tracking_index": "ICE U.S. Treasury 20+ Year Bond Index",
-     "hedged_or_unhedged": "USD(달러 표시·환노출)", "data_source": None,
-     "instrument_code": None},
-    # ---- 한국 국채 ETF (KRX 상장) — KIS 국내 일봉 실연동(가격/거래량) ----
-    {"ticker": "153130", "name": "KODEX 단기채권", "region": "한국",
-     "duration_bucket": "short", "tracking_index": "KIS 단기통안채 지수(단기)",
-     "hedged_or_unhedged": "원화(KRW)·환노출 없음", "data_source": "kis_domestic_daily",
-     "instrument_code": "153130"},
-    {"ticker": "114260", "name": "KODEX 국고채3년", "region": "한국",
-     "duration_bucket": "short", "tracking_index": "MKF 국고채 지수(3년)",
-     "hedged_or_unhedged": "원화(KRW)·환노출 없음", "data_source": "kis_domestic_daily",
-     "instrument_code": "114260"},
-    {"ticker": "471230", "name": "KODEX 국고채10년액티브", "region": "한국",
-     "duration_bucket": "intermediate", "tracking_index": "KAP 국고채 10년 지수(액티브)",
-     "hedged_or_unhedged": "원화(KRW)·환노출 없음", "data_source": "kis_domestic_daily",
-     "instrument_code": "471230"},
-    {"ticker": "439870", "name": "KODEX 국고채30년액티브", "region": "한국",
-     "duration_bucket": "long", "tracking_index": "KAP 국고채 30년 지수(액티브)",
-     "hedged_or_unhedged": "원화(KRW)·환노출 없음", "data_source": "kis_domestic_daily",
-     "instrument_code": "439870"},
-    {"ticker": "451530", "name": "TIGER 국고채30년스트립액티브", "region": "한국",
-     "duration_bucket": "long", "tracking_index": "KAP 국고채 30년 STRIP 지수(액티브)",
-     "hedged_or_unhedged": "원화(KRW)·환노출 없음", "data_source": "kis_domestic_daily",
-     "instrument_code": "451530"},
-]
+# 국채 ETF 유니버스 — **단일 원본 config/portfolio/govbond.json**(코드 하드코딩 금지, CEO).
+from . import configs as _cfg
+_UNIVERSE = _cfg.load("govbond")["universe"]
 
 # duration_bucket 별 역할/리스크 (정성 — 거시 무관 기본 성격)
 _BUCKET_ROLE = {
