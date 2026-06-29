@@ -47,10 +47,12 @@ VALID_ACTIONS = {"suggested", "added_to_research", "ignored",
 # 후보 direction 기본값 — neutral. 자동 long 절대 금지 (CEO 불변 원칙).
 DEFAULT_DIRECTION = "unknown_direction"
 
-# 반복 무시 억제 파라미터: ignored 1건당 confidence 를 곱으로 감쇠, 임계 이상이면 후순위.
-_IGNORE_DECAY = 0.6      # ignored 횟수당 곱(0.6^n)
-_IGNORE_FLOOR = 0.08     # 감쇠 하한
-_HEAVY_IGNORE = 2        # 이 횟수 이상 무시되면 "반복 무시"로 후순위
+# 튜닝 파라미터(동작 상수) — **config/portfolio/tuning.json** 단일 원본(하드코딩 금지).
+from . import configs as _cfg2
+_TUNE = _cfg2.load("tuning")["theme_suggestions"]
+_IGNORE_DECAY = _TUNE["ignore_decay"]    # ignored 횟수당 곱(반복 무시 감쇠)
+_IGNORE_FLOOR = _TUNE["ignore_floor"]    # 감쇠 하한
+_HEAVY_IGNORE = _TUNE["heavy_ignore"]    # 이 횟수 이상 무시되면 "반복 무시"로 후순위
 
 
 def _now() -> str:
@@ -82,13 +84,7 @@ _HEDGES = _themes["hedges"]
 _WATCH: dict = _themes["watch"]
 
 # 후보 type → 기본 suggested_role (neutral — 자동 적용 아님).
-_TYPE_ROLE = {
-    "adjacent": "growth_tilt",
-    "complement": "defensive",
-    "diversify": "core",
-    "hedge": "hedge",
-    "watch": "watch",
-}
+_TYPE_ROLE = _TUNE["type_role"]            # config(tuning) — 후보 type→기본 role
 
 # 변동성 성격 — 보완 분기 판단용.
 _HIGHVOL_THEMES = set(_themes["highvol_themes"])   # 설정 파일
@@ -390,13 +386,7 @@ def _record_impl(candidate_id: int, account_index: int, user_action: str, conn) 
 
 
 # user_action → 개인화 피드백 action 매핑. (선택 신호 / 무시 신호 / 수정 신호)
-_FEEDBACK_ACTION = {
-    "added_to_research": "accepted",   # 조사 후보로 채택 = 선호
-    "applied_to_draft": "accepted",
-    "saved_to_policy": "accepted",
-    "ignored": "ignored",
-    "rejected": "ignored",
-}
+_FEEDBACK_ACTION = _TUNE["feedback_action"]   # config(tuning) — user_action→선호/무시
 
 
 def _record_personalization(account_index: int, res: dict, user_action: str) -> None:

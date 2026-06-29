@@ -1,0 +1,22 @@
+{
+  "_doc": "알고리즘 튜닝 파라미터(동작 상수) 단일 원본. 원본 '데이터'(종목/테마/국채)는 instruments/themes/govbond.json. 여긴 '동작' 파라미터만.",
+  "theme_suggestions": {
+    "ignore_decay": 0.6,
+    "ignore_floor": 0.08,
+    "heavy_ignore": 2,
+    "type_role": {
+      "adjacent": "growth_tilt",
+      "complement": "defensive",
+      "diversify": "core",
+      "hedge": "hedge",
+      "watch": "watch"
+    },
+    "feedback_action": {
+      "added_to_research": "accepted",
+      "applied_to_draft": "accepted",
+      "saved_to_policy": "accepted",
+      "ignored": "ignored",
+      "rejected": "ignored"
+    }
+  }
+}
