@@ -41,11 +41,12 @@ def build_split_plan(account_index: int, picks: dict, *, prices: dict, cash_krw:
                      rounds: int = ROUNDS_DEFAULT, period_days: int = 14,
                      knee_pct: float = KNEE_PCT_DEFAULT, weighting: str = "equal",
                      markets: dict | None = None, sell_rules: dict | None = None,
-                     plan_token: str | None = None) -> dict:
+                     plan_token: str | None = None, fx_rates: dict | None = None) -> dict:
     """확정안 + picks → **기간·횟수만으로** 분할 저점 지정가 전략 plan(제안만, 주문 X).
 
     CEO 모델: 기간(period_days)+분할횟수(rounds)만 정하면 나머지(저점 사다리 가격/수량/스케줄/
     매도규칙)는 시스템이 수립. prices:{ticker:현재가}. markets:{ticker:(market,currency)}.
+    fx_rates:{통화:원화환율} — 미국주식(USD)은 KRW 예산을 통화로 환산해 수량 계산(없으면 1.0=무환산).
     반환: {ok, rounds, period_days, steps[](schedule_day 포함), sell_rules, total_target_krw,
            blocked, requires_user_approval=True, auto_order_created=False}
     """
@@ -82,14 +83,28 @@ def build_split_plan(account_index: int, picks: dict, *, prices: dict, cash_krw:
         # 회차당 비중: 균등 분할하되 1주문 한도(one_order_cap) 이내로 캡.
         per_round_pct = min(weight / rounds, one_order_cap)
         mkt, ccy = markets.get(tk, ("KRX", "KRW"))
+        is_foreign = ccy != "KRW"
+        # 통화 환산: KRW=1.0(불변). 외화(USD 등)는 fx_rates 의 환율로 KRW 예산을 통화로 환산.
+        #   fx_rates 가 None = 환산 비활성(legacy/KRW). dict 로 제공됐는데 해당 통화 환율이
+        #   없으면 **잘못된 수량 방지**를 위해 스킵(가짜 환산 금지) — 정직.
+        if is_foreign and fx_rates is not None and ccy not in fx_rates:
+            skipped.append({"ticker": tk,
+                            "reason": f"{ccy} 환율 미연동 — KRW 환산 불가(집행 보류, 환율 적재 필요)"})
+            continue
+        fx = float((fx_rates or {}).get(ccy, 1.0)) or 1.0
         for r in range(1, rounds + 1):
             # 저점 사다리: 회차가 깊어질수록 더 낮은 지정가(무릎→그 아래). 걸리면 체결, 아니면 미체결.
-            limit = round(price * (1 - knee_pct * r / 100.0))
+            #   해외(USD)는 소수 2자리(센트) 호가, 국내는 정수.
+            raw_limit = price * (1 - knee_pct * r / 100.0)
+            limit = round(raw_limit, 2) if is_foreign else round(raw_limit)
             cycle_krw = cash_krw * per_round_pct / 100.0
-            qty = math.floor(cycle_krw / limit) if limit > 0 else 0
+            cycle_in_ccy = cycle_krw / fx              # KRW 예산 → 종목 통화 예산(USD 등)
+            qty = math.floor(cycle_in_ccy / limit) if limit > 0 else 0
             if qty < 1:
+                unit = ccy
+                budget_str = f"{cycle_in_ccy:,.2f}{unit}" if is_foreign else f"{cycle_krw:,.0f}원"
                 skipped.append({"ticker": tk, "round": r,
-                                "reason": f"회차 예산 {cycle_krw:,.0f} < 1주({limit:,}) — 스킵"})
+                                "reason": f"회차 예산 {budget_str} < 1주({limit:,} {unit}) — 스킵"})
                 continue
             steps.append({
                 "ticker": tk, "market": mkt, "currency": ccy, "side": "buy",
@@ -98,7 +113,8 @@ def build_split_plan(account_index: int, picks: dict, *, prices: dict, cash_krw:
                 "schedule_day": round((r - 1) * period_days / rounds),  # 기간 내 회차 분산(일)
                 "drop_pct": round(knee_pct * r, 1),          # 현재가 대비 하락률(저점 깊이)
                 "weight_pct": round(weight, 2), "cycle_pct": round(per_round_pct, 2),
-                "cycle_krw": round(cycle_krw), "bucket": h.get("bucket"),
+                "cycle_krw": round(cycle_krw), "fx_rate": (round(fx, 2) if is_foreign else None),
+                "bucket": h.get("bucket"),
                 "on_unfilled": "no_chase",                    # 미체결이면 매수 안 함(추격·시장가 없음)
                 "client_order_id": f"exec-{account_index}-{tk}-r{r}{tok}",
             })
@@ -117,6 +133,23 @@ def build_split_plan(account_index: int, picks: dict, *, prices: dict, cash_krw:
                  "전략 1회 승인 후 execute_plan 으로 예약 지정가 일괄 집행(걸리면 체결·미체결=미매수). "
                  "시장가 매수 금지·자동주문 0·확정안 한도 내·매도는 규칙 사전승인+시그널 제안."),
     }
+
+
+def fx_rates_for_markets(markets: dict | None) -> dict | None:
+    """markets 에 외화(KRW 외) 통화가 있으면 환율 dict 반환, 없으면 None(환산 불필요·legacy).
+
+    환율 조회 실패 시 빈 dict — build_split_plan 이 해당 통화 종목을 정직하게 스킵(가짜 환산 금지).
+    """
+    ccys = {c for (_, c) in (markets or {}).values() if c and c != "KRW"}
+    if not ccys:
+        return None  # 외화 없음 → 환산 비활성(KRW only)
+    from . import price_history
+    rates: dict = {}
+    if "USD" in ccys:
+        r = price_history.fetch_fx_usdkrw()
+        if r:
+            rates["USD"] = r
+    return rates  # USD 환율 조회 실패 시 {} → 해당 종목 스킵
 
 
 def execute_plan(plan: dict, broker, account: Account, *, approved: bool,
@@ -207,7 +240,7 @@ def main() -> int:
     token = a.token or datetime.now(timezone.utc).strftime("%Y%m%d")
     plan = build_split_plan(a.account, picks, prices=prices, cash_krw=cash,
                             rounds=a.rounds, period_days=a.period, knee_pct=a.knee,
-                            markets=markets, plan_token=token)
+                            markets=markets, plan_token=token, fx_rates=fx_rates_for_markets(markets))
     sys.stdout.write(json.dumps(plan, ensure_ascii=False))
     return 0
 

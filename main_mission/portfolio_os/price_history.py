@@ -204,6 +204,95 @@ class KiwoomDailyBarFetcher(DailyBarFetcher):
 
 
 # ============================================================
+# 미국(해외) 일봉 fetcher — Yahoo Finance chart API (무키, read-only)
+#   KIS 는 해외 일봉(차트) 미구현 → Yahoo `query1.finance.yahoo.com/v8/finance/chart` 사용.
+#   자격증명 없음 · 주문 경로 무관(순수 가격 조회). 실패/빈 응답이면 명확 보고(가짜 데이터 금지).
+# ============================================================
+_YAHOO_CHART = "https://query1.finance.yahoo.com/v8/finance/chart/"
+
+
+def _yahoo_fetch_json(symbol: str, *, rng: str = "1y", timeout: float = 15.0) -> dict:
+    import urllib.parse
+    import urllib.request
+    url = f"{_YAHOO_CHART}{urllib.parse.quote(symbol)}?range={rng}&interval=1d"
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 — 고정 호스트(yahoo)
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def _yahoo_parse_bars(data: dict) -> list[dict]:
+    """Yahoo chart JSON → [{trade_date, open, high, low, close, volume}] (close 없는 행 제외)."""
+    result = ((data or {}).get("chart") or {}).get("result") or []
+    if not result:
+        return []
+    r0 = result[0]
+    ts = r0.get("timestamp") or []
+    quote = ((r0.get("indicators") or {}).get("quote") or [{}])[0]
+    o, h, low_, c, v = (quote.get("open") or [], quote.get("high") or [],
+                        quote.get("low") or [], quote.get("close") or [], quote.get("volume") or [])
+
+    def _g(arr, i):
+        return arr[i] if i < len(arr) and arr[i] is not None else None
+
+    bars: list[dict] = []
+    for i, t in enumerate(ts):
+        close = _g(c, i)
+        if close is None:
+            continue  # 휴장/결측 — 가짜로 채우지 않음
+        d = datetime.fromtimestamp(int(t), timezone.utc).strftime("%Y-%m-%d")
+        bars.append({"trade_date": d, "open": _g(o, i), "high": _g(h, i),
+                     "low": _g(low_, i), "close": float(close), "volume": _g(v, i)})
+    return bars
+
+
+class YahooDailyBarFetcher(DailyBarFetcher):
+    """미국주식/ETF 일봉 fetcher — Yahoo Finance chart API(무키, read-only)."""
+
+    def __init__(self, *, rng: str = "1y") -> None:
+        self._rng = rng
+
+    def fetch_daily(self, instrument_code: str, *, count: int = 200) -> list[dict]:
+        rng = self._rng if count <= 250 else "2y"
+        bars = _yahoo_parse_bars(_yahoo_fetch_json(instrument_code, rng=rng))
+        return bars[-count:] if count and len(bars) > count else bars
+
+    def fetch_and_store(self, instrument_code: str, *, count: int = 200) -> dict:
+        """Yahoo 일봉 조회 → price_history 멱등 upsert. read-only(주문 0)."""
+        try:
+            bars = self.fetch_daily(instrument_code, count=count)
+        except Exception as e:  # noqa: BLE001 — 네트워크/파싱 실패는 명확 보고(가짜 성공 금지)
+            return {"ok": False, "instrument_code": instrument_code,
+                    "reason": "yahoo_fetch_error", "error": str(e)}
+        if not bars:
+            return {"ok": False, "instrument_code": instrument_code, "reason": "no_bars_returned",
+                    "note": "Yahoo 빈 응답 — 심볼 확인. 가짜 데이터 미생성."}
+        res = upsert_bars(instrument_code, bars, source="yahoo_daily")
+        res["fetched"] = len(bars)
+        res["range"] = {"from": bars[0]["trade_date"], "to": bars[-1]["trade_date"]}
+        return res
+
+
+def fetch_fx_usdkrw() -> float | None:
+    """USD/KRW 환율(최근 종가) — 미국주식 KRW 예산 환산용. 실패 시 None(가짜 환율 금지)."""
+    try:
+        bars = _yahoo_parse_bars(_yahoo_fetch_json("USDKRW=X", rng="5d"))
+    except Exception:  # noqa: BLE001
+        return None
+    if not bars:
+        return None
+    try:
+        return float(bars[-1]["close"])
+    except (TypeError, ValueError, KeyError):
+        return None
+
+
+def is_krx_code(code: str) -> bool:
+    """KRX 종목코드(6자리 숫자) 여부 — 아니면 해외(미국)로 간주해 Yahoo 라우팅."""
+    c = str(code or "").strip()
+    return c.isdigit() and len(c) == 6
+
+
+# ============================================================
 # quotes seed (근사 — 정직: 실 일봉 아님)
 # ============================================================
 def seed_from_quotes(ticker: str, instrument_code: str | None = None) -> dict:
@@ -294,24 +383,34 @@ def main() -> int:
         if args.account is None:
             out = {"ok": False, "error": "--fetch-daily 에는 --account N 필요 (KIS 키 소스)"}
         elif args.codes:
-            # 다종목 일괄 적재 — picks 의 각 종목을 fetch_and_store. KRX 성공, 해외(미구현)는 graceful 미연동.
+            # 다종목 일괄 적재 — 종목별 라우팅: KRX(6자리 숫자)→KIS 일봉, 그 외→미국(Yahoo) 일봉.
             codes = [c.strip() for c in args.codes.split(",") if c.strip()]
-            try:
-                fetcher = KisDailyBarFetcher(account_index=args.account)
-            except Exception as e:  # noqa: BLE001 — 어댑터/키 생성 실패는 명확 보고
-                fetcher = None
-                out = {"ok": False, "error": str(e), "results": []}
-            if fetcher is not None:
-                results = []
-                for c in codes:
-                    try:
-                        r = fetcher.fetch_and_store(c, count=args.count)
-                    except Exception as e:  # noqa: BLE001 — 종목별 실패 격리(한 종목이 전체 막지 않음)
-                        r = {"ok": False, "instrument_code": c, "reason": "fetch_error", "error": str(e)}
-                    results.append({"code": c, "ok": bool(r.get("ok")), "fetched": r.get("fetched"),
-                                    "reason": r.get("reason"), "range": r.get("range")})
-                loaded = sum(1 for x in results if x["ok"])
-                out = {"ok": loaded > 0, "loaded": loaded, "total": len(results), "results": results}
+            kis = None          # KRX 종목이 있을 때만 lazy 생성(미국만 적재 시 KIS 키 불필요)
+            kis_err = None
+            yahoo = YahooDailyBarFetcher()
+            results = []
+            for c in codes:
+                try:
+                    if is_krx_code(c):
+                        if kis is None and kis_err is None:
+                            try:
+                                kis = KisDailyBarFetcher(account_index=args.account)
+                            except Exception as e:  # noqa: BLE001 — KIS 키/어댑터 실패는 KRX 종목에만 영향
+                                kis_err = str(e)
+                        if kis is None:
+                            r = {"ok": False, "instrument_code": c, "reason": "kis_unavailable", "error": kis_err}
+                        else:
+                            r = kis.fetch_and_store(c, count=args.count)
+                        src = "kis"
+                    else:
+                        r = yahoo.fetch_and_store(c, count=args.count)
+                        src = "yahoo"
+                except Exception as e:  # noqa: BLE001 — 종목별 실패 격리(한 종목이 전체 막지 않음)
+                    r, src = {"ok": False, "instrument_code": c, "reason": "fetch_error", "error": str(e)}, "?"
+                results.append({"code": c, "source": src, "ok": bool(r.get("ok")),
+                                "fetched": r.get("fetched"), "reason": r.get("reason"), "range": r.get("range")})
+            loaded = sum(1 for x in results if x["ok"])
+            out = {"ok": loaded > 0, "loaded": loaded, "total": len(results), "results": results}
         elif args.code:
             try:
                 fetcher = KisDailyBarFetcher(account_index=args.account)

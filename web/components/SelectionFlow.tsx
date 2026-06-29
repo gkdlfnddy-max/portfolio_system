@@ -1875,12 +1875,13 @@ function SplitEntryStep({ accountId, picks, plan, setPlan }: {
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-medium text-sky-700">① 가격 데이터 적재(전제)</span>
           <Button size="sm" variant="outline" onClick={loadPrices} disabled={priceLoading || picks.length === 0}>
-            {priceLoading ? "적재 중…" : "국내(KRX) 가격 적재"}
+            {priceLoading ? "적재 중…" : "가격 적재 (국내+미국)"}
           </Button>
         </div>
         <p className="text-[11px] text-neutral-500">
-          분할 지정가는 일봉(현재가)이 있어야 만들어집니다. <b>KRX 종목만</b> 적재되고, 미국 ETF 등 해외는
-          아직 가격 소스가 없어 <b>미연동</b>으로 남습니다(가짜 가격 미생성). read-only — 주문 아님.
+          분할 지정가는 일봉(현재가)이 있어야 만들어집니다. <b>KRX는 KIS</b>, <b>미국 ETF는 Yahoo</b>에서 적재합니다.
+          미국 종목은 USD 가격이라 <b>실시간 환율(USD/KRW)로 환산</b>해 수량을 계산합니다(환율 미연동 시 정직하게 보류).
+          read-only — 주문 아님.
         </p>
         {priceResult && (
           <p className="text-[11px]">
